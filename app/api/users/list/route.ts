@@ -125,6 +125,9 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Исключить текущего пользователя из списка (не показывать самого себя)
+    filteredUsers = filteredUsers.filter((u) => u.id !== user.id);
+
     return NextResponse.json({ users: filteredUsers });
   } catch (error) {
     console.error('Ошибка получения списка пользователей:', error);

@@ -1,9 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import PhotoViewer from './PhotoViewer';
 
-interface Photo {
+interface Video {
   id: number;
   filename: string;
   originalName: string;
@@ -11,11 +10,9 @@ interface Photo {
   uploadedAt: string;
   isVisibleToCustomer: boolean;
   folderId: number | null;
-  uploadedByUserId: number | null;
-  uploadedByUser?: {
-    id: number;
-    role: string;
-  } | null;
+  duration: number | null;
+  width: number | null;
+  height: number | null;
   folder: {
     id: number;
     name: string;
@@ -34,23 +31,20 @@ interface Folder {
   name: string;
 }
 
-interface PhotosGalleryProps {
+interface VideosGalleryProps {
   objectId: number;
   userRole: string;
   canUpload: boolean;
-  userId: number;
 }
 
-export default function PhotosGallery({ objectId, userRole, canUpload, userId }: PhotosGalleryProps) {
-  const [photos, setPhotos] = useState<Photo[]>([]);
+export default function VideosGallery({ objectId, userRole, canUpload }: VideosGalleryProps) {
+  const [videos, setVideos] = useState<Video[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedFolder, setSelectedFolder] = useState<number | null>(null);
-  const [selectedSource, setSelectedSource] = useState<'all' | 'CUSTOMER' | 'BUILDER' | 'DESIGNER'>('all');
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
   const [isVisibleToCustomer, setIsVisibleToCustomer] = useState(userRole === 'CUSTOMER');
   const [showCreateFolderModal, setShowCreateFolderModal] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
@@ -58,32 +52,34 @@ export default function PhotosGallery({ objectId, userRole, canUpload, userId }:
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    loadPhotos();
-  }, [objectId, selectedFolder, selectedSource]);
+    loadVideos();
+    
+    // Слушать событие обновления видео
+    const handleVideosUpdated = () => {
+      loadVideos();
+    };
+    window.addEventListener('videosUpdated', handleVideosUpdated);
+    
+    return () => {
+      window.removeEventListener('videosUpdated', handleVideosUpdated);
+    };
+  }, [objectId, selectedFolder]);
 
-  const loadPhotos = async () => {
+  const loadVideos = async () => {
     setLoading(true);
     try {
-      let url = `/api/objects/${objectId}/photos`;
-      const params = new URLSearchParams();
-      if (selectedFolder) {
-        params.append('folderId', selectedFolder.toString());
-      }
-      if (selectedSource !== 'all') {
-        params.append('sourceRole', selectedSource);
-      }
-      if (params.toString()) {
-        url += '?' + params.toString();
-      }
+      const url = selectedFolder
+        ? `/api/objects/${objectId}/videos?folderId=${selectedFolder}`
+        : `/api/objects/${objectId}/videos`;
       
       const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
-        setPhotos(data.photos || []);
+        setVideos(data.videos || []);
         setFolders(data.folders || []);
       }
     } catch (error) {
-      console.error('Ошибка загрузки фото:', error);
+      console.error('Ошибка загрузки видео:', error);
     } finally {
       setLoading(false);
     }
@@ -97,89 +93,43 @@ export default function PhotosGallery({ objectId, userRole, canUpload, userId }:
     setUploadError(null);
 
     try {
-      // Разделить файлы на фото и видео
-      const photoFiles: File[] = [];
-      const videoFiles: File[] = [];
-
+      const formData = new FormData();
       Array.from(files).forEach((file) => {
-        if (file.type.startsWith('image/')) {
-          photoFiles.push(file);
-        } else if (file.type.startsWith('video/')) {
-          videoFiles.push(file);
-        }
+        formData.append('files', file);
+      });
+      if (selectedFolder) {
+        formData.append('folderId', selectedFolder.toString());
+      }
+      formData.append('isVisibleToCustomer', isVisibleToCustomer.toString());
+
+      const response = await fetch(`/api/objects/${objectId}/videos`, {
+        method: 'POST',
+        body: formData,
       });
 
-      const uploadPromises: Promise<void>[] = [];
-
-      // Загрузить фото
-      if (photoFiles.length > 0) {
-        const photoFormData = new FormData();
-        photoFiles.forEach((file) => {
-          photoFormData.append('files', file);
-        });
-        if (selectedFolder) {
-          photoFormData.append('folderId', selectedFolder.toString());
+      if (response.ok) {
+        await loadVideos();
+        setShowUploadModal(false);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
         }
-        photoFormData.append('isVisibleToCustomer', isVisibleToCustomer.toString());
-
-        uploadPromises.push(
-          fetch(`/api/objects/${objectId}/photos`, {
-            method: 'POST',
-            body: photoFormData,
-          }).then(async (response) => {
-            if (!response.ok) {
-              const errorData = await response.json();
-              throw new Error(errorData.error || 'Ошибка загрузки фото');
-            }
-          })
-        );
-      }
-
-      // Загрузить видео
-      if (videoFiles.length > 0) {
-        const videoFormData = new FormData();
-        videoFiles.forEach((file) => {
-          videoFormData.append('files', file);
-        });
-        if (selectedFolder) {
-          videoFormData.append('folderId', selectedFolder.toString());
-        }
-        videoFormData.append('isVisibleToCustomer', isVisibleToCustomer.toString());
-
-        uploadPromises.push(
-          fetch(`/api/objects/${objectId}/videos`, {
-            method: 'POST',
-            body: videoFormData,
-          }).then(async (response) => {
-            if (!response.ok) {
-              const errorData = await response.json();
-              throw new Error(errorData.error || 'Ошибка загрузки видео');
-            }
-          })
-        );
-      }
-
-      // Дождаться загрузки всех файлов
-      await Promise.all(uploadPromises);
-
-      // Перезагрузить список фото
-      await loadPhotos();
-      
-      // Вызвать callback для обновления видео (если есть)
-      if (videoFiles.length > 0 && typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('videosUpdated'));
-      }
-
-      setShowUploadModal(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
+      } else {
+        const errorData = await response.json();
+        setUploadError(errorData.error || 'Ошибка загрузки видео');
       }
     } catch (error) {
-      console.error('Ошибка загрузки файлов:', error);
-      setUploadError(error instanceof Error ? error.message : 'Ошибка загрузки файлов');
+      console.error('Ошибка загрузки видео:', error);
+      setUploadError('Ошибка загрузки видео');
     } finally {
       setUploading(false);
     }
+  };
+
+  const formatDuration = (seconds: number | null) => {
+    if (!seconds) return '';
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   if (loading) {
@@ -188,77 +138,28 @@ export default function PhotosGallery({ objectId, userRole, canUpload, userId }:
 
   return (
     <div>
-      {/* Кнопка загрузки и фильтры */}
-      <div className="glass rounded-lg p-4 mb-6 space-y-4">
-        {/* Кнопки действий */}
-        <div className="flex flex-wrap gap-2">
-          {canUpload && (
-            <button
-              onClick={() => setShowUploadModal(true)}
-              className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition text-sm font-medium"
-            >
-              + Загрузить фото
-            </button>
-          )}
-          {canUpload && (
-            <button
-              onClick={() => setShowCreateFolderModal(true)}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm font-medium"
-            >
-              + Создать папку
-            </button>
-          )}
-        </div>
-
-        {/* Фильтр по источникам */}
-        <div className="flex flex-wrap gap-2 items-center">
-          <span className="text-sm text-gray-600 font-medium">Источник:</span>
-          <button
-            onClick={() => setSelectedSource('all')}
-            className={`px-4 py-2 rounded-lg transition text-sm ${
-              selectedSource === 'all'
-                ? 'bg-primary-600 text-white'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            }`}
-          >
-            Все
-          </button>
-          <button
-            onClick={() => setSelectedSource('CUSTOMER')}
-            className={`px-4 py-2 rounded-lg transition text-sm ${
-              selectedSource === 'CUSTOMER'
-                ? 'bg-primary-600 text-white'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            }`}
-          >
-            От заказчика
-          </button>
-          <button
-            onClick={() => setSelectedSource('BUILDER')}
-            className={`px-4 py-2 rounded-lg transition text-sm ${
-              selectedSource === 'BUILDER'
-                ? 'bg-primary-600 text-white'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            }`}
-          >
-            От строителя
-          </button>
-          <button
-            onClick={() => setSelectedSource('DESIGNER')}
-            className={`px-4 py-2 rounded-lg transition text-sm ${
-              selectedSource === 'DESIGNER'
-                ? 'bg-primary-600 text-white'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            }`}
-          >
-            От проектировщика
-          </button>
-        </div>
-
-        {/* Фильтр по папкам */}
-        {folders.length > 0 && (
-          <div className="flex flex-wrap gap-2 items-center">
-            <span className="text-sm text-gray-600 font-medium">Папка:</span>
+      {/* Кнопка загрузки и фильтр по папкам */}
+      <div className="glass rounded-lg p-4 mb-6">
+        <div className="flex flex-wrap justify-between items-center gap-4">
+          <div className="flex flex-wrap gap-2">
+            {canUpload && (
+              <button
+                onClick={() => setShowUploadModal(true)}
+                className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition text-sm font-medium"
+              >
+                + Загрузить видео
+              </button>
+            )}
+            {canUpload && (
+              <button
+                onClick={() => setShowCreateFolderModal(true)}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm font-medium"
+              >
+                + Создать папку
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setSelectedFolder(null)}
               className={`px-4 py-2 rounded-lg transition text-sm ${
@@ -267,7 +168,7 @@ export default function PhotosGallery({ objectId, userRole, canUpload, userId }:
                   : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
               }`}
             >
-              Все фото
+              Все видео
             </button>
             {folders.map((folder) => (
               <button
@@ -283,71 +184,62 @@ export default function PhotosGallery({ objectId, userRole, canUpload, userId }:
               </button>
             ))}
           </div>
-        )}
+        </div>
       </div>
 
-      {/* Галерея фото */}
-      {photos.length === 0 ? (
+      {/* Галерея видео */}
+      {videos.length === 0 ? (
         <div className="glass rounded-lg p-12 text-center">
           <p className="text-gray-600 text-lg mb-4">
-            {selectedFolder ? 'В этой папке пока нет фото' : 'Фотографии пока не загружены'}
+            {selectedFolder ? 'В этой папке пока нет видео' : 'Видео пока не загружены'}
           </p>
           {canUpload && (
             <button
               onClick={() => setShowUploadModal(true)}
               className="px-6 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition"
             >
-              Загрузить первое фото
+              Загрузить первое видео
             </button>
           )}
         </div>
       ) : (
-        <div className="grid md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {photos.map((photo) => (
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {videos.map((video) => (
             <div
-              key={photo.id}
-              className="glass rounded-lg overflow-hidden hover:bg-white/20 transition cursor-pointer"
-              onClick={() => setSelectedPhoto(photo)}
+              key={video.id}
+              className="glass rounded-lg overflow-hidden hover:bg-white/20 transition"
             >
-              <div className="aspect-square bg-gray-200 flex items-center justify-center overflow-hidden">
-                <img
-                  src={`/api/files/photos/${objectId}/${photo.filename}`}
-                  alt={photo.originalName}
+              <div className="aspect-video bg-gray-200 flex items-center justify-center overflow-hidden relative">
+                <video
+                  src={`/api/files/videos/${objectId}/${video.filename}`}
                   className="w-full h-full object-cover"
-                  onError={(e) => {
-                    // Если изображение не загрузилось, показать иконку
-                    const target = e.target as HTMLImageElement;
-                    target.style.display = 'none';
-                    const parent = target.parentElement;
-                    if (parent) {
-                      parent.innerHTML = `
-                        <svg class="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
-                      `;
-                    }
-                  }}
+                  controls
+                  preload="metadata"
                 />
+                {video.duration && (
+                  <div className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
+                    {formatDuration(video.duration)}
+                  </div>
+                )}
               </div>
               <div className="p-3">
                 <div className="flex justify-between items-start mb-1">
-                  <p className="text-sm font-medium truncate flex-1">{photo.originalName}</p>
+                  <p className="text-sm font-medium truncate flex-1">{video.originalName}</p>
                   <div className="flex items-center gap-2 ml-2">
                     {/* Переключатель видимости для заказчика */}
                     {(userRole === 'DESIGNER' || userRole === 'BUILDER' || userRole === 'ADMIN') && (
                       <label
                         className="flex items-center gap-1 cursor-pointer"
                         onClick={(e) => e.stopPropagation()}
-                        title={photo.isVisibleToCustomer ? 'Видно заказчику' : 'Скрыто от заказчика'}
+                        title={video.isVisibleToCustomer ? 'Видно заказчику' : 'Скрыто от заказчика'}
                       >
                         <input
                           type="checkbox"
-                          checked={photo.isVisibleToCustomer}
+                          checked={video.isVisibleToCustomer}
                           onChange={async (e) => {
                             const newVisibility = e.target.checked;
                             try {
-                              const response = await fetch(`/api/photos/${photo.id}/visibility`, {
+                              const response = await fetch(`/api/videos/${video.id}/visibility`, {
                                 method: 'PUT',
                                 headers: {
                                   'Content-Type': 'application/json',
@@ -356,7 +248,7 @@ export default function PhotosGallery({ objectId, userRole, canUpload, userId }:
                               });
 
                               if (response.ok) {
-                                await loadPhotos();
+                                await loadVideos();
                               } else {
                                 const errorData = await response.json();
                                 alert(errorData.error || 'Ошибка изменения видимости');
@@ -373,21 +265,21 @@ export default function PhotosGallery({ objectId, userRole, canUpload, userId }:
                           className="w-4 h-4 text-primary-600 rounded focus:ring-primary-500"
                         />
                         <span className={`text-xs px-2 py-1 rounded ${
-                          photo.isVisibleToCustomer 
+                          video.isVisibleToCustomer 
                             ? 'bg-green-100 text-green-800' 
                             : 'bg-yellow-100 text-yellow-800'
                         }`}>
-                          {photo.isVisibleToCustomer ? 'Видно' : 'Скрыто'}
+                          {video.isVisibleToCustomer ? 'Видно' : 'Скрыто'}
                         </span>
                       </label>
                     )}
                     {canUpload && (
                       <select
-                        value={photo.folderId || ''}
+                        value={video.folderId || ''}
                         onChange={async (e) => {
                           const newFolderId = e.target.value === '' ? null : parseInt(e.target.value);
                           try {
-                            const response = await fetch(`/api/photos/${photo.id}/move`, {
+                            const response = await fetch(`/api/videos/${video.id}/move`, {
                               method: 'PUT',
                               headers: {
                                 'Content-Type': 'application/json',
@@ -396,14 +288,14 @@ export default function PhotosGallery({ objectId, userRole, canUpload, userId }:
                             });
 
                             if (response.ok) {
-                              await loadPhotos();
+                              await loadVideos();
                             } else {
                               const errorData = await response.json();
-                              alert(errorData.error || 'Ошибка перемещения фото');
+                              alert(errorData.error || 'Ошибка перемещения видео');
                             }
                           } catch (error) {
-                            console.error('Ошибка перемещения фото:', error);
-                            alert('Ошибка перемещения фото');
+                            console.error('Ошибка перемещения видео:', error);
+                            alert('Ошибка перемещения видео');
                           }
                         }}
                         onClick={(e) => e.stopPropagation()}
@@ -420,11 +312,11 @@ export default function PhotosGallery({ objectId, userRole, canUpload, userId }:
                   </div>
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
-                  {new Date(photo.uploadedAt).toLocaleDateString('ru-RU')}
+                  {new Date(video.uploadedAt).toLocaleDateString('ru-RU')}
                 </p>
-                {photo._count.comments > 0 && (
+                {video._count.comments > 0 && (
                   <p className="text-xs text-primary-600 mt-1">
-                    {photo._count.comments} {photo._count.comments === 1 ? 'комментарий' : photo._count.comments < 5 ? 'комментария' : 'комментариев'}
+                    {video._count.comments} {video._count.comments === 1 ? 'комментарий' : video._count.comments < 5 ? 'комментария' : 'комментариев'}
                   </p>
                 )}
               </div>
@@ -437,27 +329,27 @@ export default function PhotosGallery({ objectId, userRole, canUpload, userId }:
       {showUploadModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="glass rounded-lg p-6 max-w-md w-full">
-            <h2 className="text-xl font-bold mb-4">Загрузить фото</h2>
+            <h2 className="text-xl font-bold mb-4">Загрузить видео</h2>
             
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*,video/*"
+              accept="video/*"
               multiple
               onChange={handleFileSelect}
               className="hidden"
-              id="photo-upload"
+              id="video-upload"
             />
             
             <label
-              htmlFor="photo-upload"
+              htmlFor="video-upload"
               className="block w-full px-4 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition text-center cursor-pointer mb-4"
             >
-              {uploading ? 'Загрузка...' : 'Выбрать файлы (фото и видео)'}
+              {uploading ? 'Загрузка...' : 'Выбрать видео файлы'}
             </label>
             
             <p className="text-sm text-gray-600 text-center mb-4">
-              Можно выбрать несколько файлов. Система автоматически разделит фото и видео.
+              Можно выбрать несколько видео файлов. Максимальный размер: 500 MB.
             </p>
 
             {/* Чекбокс видимости для заказчика */}
@@ -505,17 +397,6 @@ export default function PhotosGallery({ objectId, userRole, canUpload, userId }:
         </div>
       )}
 
-      {/* Просмотрщик фото */}
-      {selectedPhoto && (
-        <PhotoViewer
-          photo={selectedPhoto}
-          objectId={objectId}
-          userRole={userRole}
-          userId={userId}
-          onClose={() => setSelectedPhoto(null)}
-        />
-      )}
-
       {/* Модальное окно создания папки */}
       {showCreateFolderModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -537,7 +418,7 @@ export default function PhotosGallery({ objectId, userRole, canUpload, userId }:
                   });
 
                   if (response.ok) {
-                    await loadPhotos(); // Перезагрузить список (включая папки)
+                    await loadVideos(); // Перезагрузить список (включая папки)
                     setNewFolderName('');
                     setShowCreateFolderModal(false);
                   } else {

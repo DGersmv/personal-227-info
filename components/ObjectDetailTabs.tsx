@@ -18,6 +18,7 @@ export default function ObjectDetailTabs({
   const getActiveTab = () => {
     if (pathname?.includes('/projects')) return 'projects';
     if (pathname?.includes('/photos')) return 'photos';
+    if (pathname?.includes('/videos')) return 'videos';
     if (pathname?.includes('/panoramas')) return 'panoramas';
     if (pathname?.includes('/documents')) return 'documents';
     if (pathname?.includes('/messages')) return 'messages';
@@ -30,6 +31,7 @@ export default function ObjectDetailTabs({
     { id: 'overview', label: 'Обзор', href: `/objects/${objectId}` },
     { id: 'projects', label: 'Проекты', href: `/objects/${objectId}/projects` },
     { id: 'photos', label: 'Фото', href: `/objects/${objectId}/photos` },
+    { id: 'videos', label: 'Видео', href: `/objects/${objectId}/videos` },
     { id: 'panoramas', label: 'Панорамы', href: `/objects/${objectId}/panoramas` },
     { id: 'documents', label: 'Документы', href: `/objects/${objectId}/documents` },
     { id: 'messages', label: 'Сообщения', href: `/objects/${objectId}/messages` },
@@ -83,6 +85,15 @@ export default function ObjectDetailTabs({
               <h4 className="font-semibold mb-2">Фотографии</h4>
               <p className="text-sm text-gray-600">
                 Галерея фотографий объекта
+              </p>
+            </Link>
+            <Link
+              href={`/objects/${objectId}/videos`}
+              className="glass rounded-lg p-4 hover:bg-white/20 transition"
+            >
+              <h4 className="font-semibold mb-2">Видео</h4>
+              <p className="text-sm text-gray-600">
+                Видеоматериалы объекта
               </p>
             </Link>
             <Link

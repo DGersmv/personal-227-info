@@ -122,7 +122,7 @@ export default function Header() {
                   href="/"
                   className="text-sm lg:text-base text-gray-700 hover:text-primary-600 transition"
                 >
-                  Дашборд
+                  Панель управления
                 </Link>
                 <Link
                   href="/objects"
@@ -180,7 +180,7 @@ export default function Header() {
                   onClick={() => setMobileMenuOpen(false)}
                   className="block text-gray-700 hover:text-primary-600 transition py-2"
                 >
-                  Дашборд
+                  Панель управления
                 </Link>
                 <Link
                   href="/objects"

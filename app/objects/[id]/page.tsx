@@ -51,6 +51,7 @@ export default async function ObjectDetailPage({
         select: {
           projects: true,
           photos: true,
+          videos: true,
           panoramas: true,
           documents: true,
         },

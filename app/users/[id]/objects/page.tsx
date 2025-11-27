@@ -178,7 +178,7 @@ export default async function UserObjectsPage({
               href="/"
               className="text-primary-600 hover:underline mb-4 inline-block text-sm md:text-base"
             >
-              ← Назад к Dashboard
+              ← Назад к Панели управления
             </Link>
             <h1 className="text-2xl md:text-4xl font-bold mb-2">
               Объекты {targetUser.name || targetUser.email}

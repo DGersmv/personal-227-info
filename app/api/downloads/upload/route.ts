@@ -46,7 +46,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Создать директорию, если её нет
-    const uploadsDir = join(process.cwd(), 'public', 'downloads');
+    // Храним файлы ВНЕ public/ для безопасности
+    const uploadsDir = join(process.cwd(), 'uploads', 'downloads');
     if (!existsSync(uploadsDir)) {
       await mkdir(uploadsDir, { recursive: true });
     }
@@ -64,11 +65,12 @@ export async function POST(request: NextRequest) {
     await writeFile(filePath, buffer);
 
     // Вернуть информацию о файле
+    // filePath храним как относительный путь для БД
     return NextResponse.json({
       success: true,
       filename,
       originalName: originalName,
-      filePath: `public/downloads/${filename}`,
+      filePath: `uploads/downloads/${filename}`, // Путь для хранения в БД
       fileSize: file.size,
       mimeType: file.type || 'application/octet-stream',
     });

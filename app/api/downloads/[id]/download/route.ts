@@ -72,8 +72,19 @@ export async function GET(
     }
 
     // Прочитать файл
+    // Поддержка старых путей (public/downloads/) и новых (uploads/downloads/)
     try {
-      const filePath = join(process.cwd(), item.filePath);
+      let filePath: string;
+      if (item.filePath.startsWith('public/')) {
+        // Старый путь (для обратной совместимости)
+        filePath = join(process.cwd(), item.filePath);
+      } else if (item.filePath.startsWith('uploads/')) {
+        // Новый путь (защищенное хранилище)
+        filePath = join(process.cwd(), item.filePath);
+      } else {
+        // Если путь относительный, пробуем оба варианта
+        filePath = join(process.cwd(), 'uploads', 'downloads', item.filename);
+      }
       const fileBuffer = await readFile(filePath);
 
       // Увеличить счетчик скачиваний

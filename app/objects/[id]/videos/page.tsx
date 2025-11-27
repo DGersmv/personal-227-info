@@ -3,9 +3,9 @@ import { getCurrentUser } from '@/lib/auth';
 import Header from '@/components/Header';
 import { prisma } from '@/lib/prisma';
 import Link from 'next/link';
-import PhotosGallery from '@/components/PhotosGallery';
+import VideosGallery from '@/components/VideosGallery';
 
-export default async function ObjectPhotosPage({
+export default async function ObjectVideosPage({
   params,
 }: {
   params: Promise<{ id: string }>;
@@ -68,17 +68,15 @@ export default async function ObjectPhotosPage({
               ← Назад к объекту
             </Link>
             <div>
-              <h1 className="text-2xl md:text-4xl font-bold mb-2">Фотографии</h1>
+              <h1 className="text-2xl md:text-4xl font-bold mb-2">Видео</h1>
               <p className="text-sm md:text-base text-gray-600">Объект: {object.title}</p>
             </div>
           </div>
 
-          <PhotosGallery objectId={objectId} userRole={user.role} canUpload={canUpload} userId={user.id} />
+          <VideosGallery objectId={objectId} userRole={user.role} canUpload={canUpload} />
         </div>
       </div>
     </div>
   );
 }
-
-
 

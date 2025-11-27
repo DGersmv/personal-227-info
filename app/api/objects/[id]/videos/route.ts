@@ -3,7 +3,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
 /**
- * GET /api/objects/[id]/photos - Получить фото объекта
+ * GET /api/objects/[id]/videos - Получить видео объекта
  */
 export async function GET(
   request: NextRequest,
@@ -64,7 +64,6 @@ export async function GET(
     const searchParams = request.nextUrl.searchParams;
     const folderId = searchParams.get('folderId');
     const stageId = searchParams.get('stageId');
-    const sourceRole = searchParams.get('sourceRole'); // Фильтр по роли загрузившего
 
     const where: any = {
       objectId: objectId,
@@ -78,13 +77,13 @@ export async function GET(
       where.stageId = parseInt(stageId);
     }
 
-    // Для заказчика показываем только видимые фото
+    // Для заказчика показываем только видимые видео
     if (user.role === 'CUSTOMER') {
       where.isVisibleToCustomer = true;
     }
 
-    // Получить фото
-    let photos = await prisma.photo.findMany({
+    // Получить видео
+    const videos = await prisma.video.findMany({
       where,
       include: {
         folder: {
@@ -99,12 +98,6 @@ export async function GET(
             title: true,
           },
         },
-        uploadedByUser: {
-          select: {
-            id: true,
-            role: true,
-          },
-        },
         _count: {
           select: {
             comments: true,
@@ -114,20 +107,15 @@ export async function GET(
       orderBy: { uploadedAt: 'desc' },
     });
 
-    // Фильтр по источнику (роль загрузившего) - применяем после получения данных
-    if (sourceRole && ['CUSTOMER', 'BUILDER', 'DESIGNER'].includes(sourceRole)) {
-      photos = photos.filter((photo) => photo.uploadedByUser?.role === sourceRole);
-    }
-
-    // Получить папки объекта
+    // Получить папки объекта (те же, что и для фото)
     const folders = await prisma.photoFolder.findMany({
       where: { objectId },
       orderBy: { orderIndex: 'asc' },
     });
 
-    return NextResponse.json({ photos, folders });
+    return NextResponse.json({ videos, folders });
   } catch (error) {
-    console.error('Ошибка получения фото:', error);
+    console.error('Ошибка получения видео:', error);
     return NextResponse.json(
       { error: 'Внутренняя ошибка сервера' },
       { status: 500 }
@@ -136,7 +124,7 @@ export async function GET(
 }
 
 /**
- * POST /api/objects/[id]/photos - Загрузить фото
+ * POST /api/objects/[id]/videos - Загрузить видео
  */
 export async function POST(
   request: NextRequest,
@@ -176,10 +164,10 @@ export async function POST(
       );
     }
 
-    // Проверка прав: Проектировщик, Строитель и Заказчик могут загружать фото
+    // Проверка прав: Проектировщик, Строитель и Заказчик могут загружать видео
     if (user.role !== 'DESIGNER' && user.role !== 'BUILDER' && user.role !== 'CUSTOMER' && user.role !== 'ADMIN') {
       return NextResponse.json(
-        { error: 'Недостаточно прав для загрузки фото' },
+        { error: 'Недостаточно прав для загрузки видео' },
         { status: 403 }
       );
     }
@@ -193,7 +181,6 @@ export async function POST(
         );
       }
     } else if (user.role === 'DESIGNER' || user.role === 'BUILDER') {
-      // Проектировщик и Строитель могут загружать фото, если назначены на объект
       const hasAccess = object.assignments.some((a) => a.userId === user.id);
       if (!hasAccess && user.role !== 'ADMIN') {
         return NextResponse.json(
@@ -208,11 +195,10 @@ export async function POST(
     const stageId = formData.get('stageId');
     const isVisibleToCustomer = formData.get('isVisibleToCustomer') === 'true';
 
-    // Поддержка множественной загрузки: получаем все файлы
+    // Поддержка множественной загрузки
     const files = formData.getAll('files') as File[];
     const singleFile = formData.get('file') as File | null;
     
-    // Если передан один файл через 'file', добавляем его в массив
     const allFiles: File[] = [];
     if (singleFile) {
       allFiles.push(singleFile);
@@ -226,24 +212,24 @@ export async function POST(
       );
     }
 
-    // Создать директорию для фото объекта, если её нет
+    // Создать директорию для видео объекта
     const { writeFile, mkdir } = await import('fs/promises');
     const { join } = await import('path');
     const { existsSync } = await import('fs');
     
-    const uploadsDir = join(process.cwd(), 'uploads', 'objects', objectId.toString(), 'photos');
+    const uploadsDir = join(process.cwd(), 'uploads', 'objects', objectId.toString(), 'videos');
     if (!existsSync(uploadsDir)) {
       await mkdir(uploadsDir, { recursive: true });
     }
 
-    const maxSize = 10 * 1024 * 1024; // 10 MB
-    const uploadedPhotos = [];
+    const maxSize = 500 * 1024 * 1024; // 500 MB для видео
+    const uploadedVideos = [];
 
     // Обработать каждый файл
     for (const file of allFiles) {
-      // Проверить тип файла (только изображения)
-      if (!file.type.startsWith('image/')) {
-        continue; // Пропускаем не-изображения (они будут обработаны как видео)
+      // Проверить тип файла (только видео)
+      if (!file.type.startsWith('video/')) {
+        continue; // Пропускаем не-видео
       }
 
       // Проверить размер файла
@@ -255,7 +241,7 @@ export async function POST(
       const timestamp = Date.now();
       const randomStr = Math.random().toString(36).substring(7);
       const originalName = file.name;
-      const fileExtension = originalName.split('.').pop()?.toLowerCase() || 'jpg';
+      const fileExtension = originalName.split('.').pop()?.toLowerCase() || 'mp4';
       const filename = `${timestamp}-${randomStr}.${fileExtension}`;
       const filePath = join(uploadsDir, filename);
 
@@ -265,10 +251,10 @@ export async function POST(
       await writeFile(filePath, buffer);
 
       // URL для доступа к файлу через API
-      const url = `/api/files/photos/${objectId}/${filename}`;
+      const url = `/api/files/videos/${objectId}/${filename}`;
 
-      // Сохранить информацию о фото в БД
-      const photo = await prisma.photo.create({
+      // Сохранить информацию о видео в БД
+      const video = await prisma.video.create({
         data: {
           objectId: objectId,
           filename: filename,
@@ -302,22 +288,20 @@ export async function POST(
         },
       });
 
-      uploadedPhotos.push(photo);
+      uploadedVideos.push(video);
     }
 
     return NextResponse.json({
       success: true,
-      photos: uploadedPhotos,
-      count: uploadedPhotos.length,
+      videos: uploadedVideos,
+      count: uploadedVideos.length,
     });
   } catch (error) {
-    console.error('Ошибка загрузки фото:', error);
+    console.error('Ошибка загрузки видео:', error);
     return NextResponse.json(
       { error: 'Внутренняя ошибка сервера' },
       { status: 500 }
     );
   }
 }
-
-
 

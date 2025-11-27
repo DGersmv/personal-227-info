@@ -44,9 +44,11 @@ model User {
   messages  Message[]
   photoComments PhotoComment[]
   panoramaComments PanoramaComment[]
+  videoComments VideoComment[]
   objectAssignments UserObjectAssignment[]
   uploadedDocuments Document[] @relation("UploadedDocuments")
   uploadedPhotos Photo[] @relation("UploadedPhotos")
+  uploadedVideos Video[] @relation("UploadedVideos")
   inSalesAccount InSalesAccount?
   downloadPurchases DownloadPurchase[] @relation("DownloadPurchases")
   payments Payment[] @relation("Payments")
@@ -95,6 +97,7 @@ model Object {
   projects  Project[]
   photos    Photo[]
   panoramas Panorama[]
+  videos    Video[]
   documents Document[]
   messages  Message[]
   photoFolders PhotoFolder[]
@@ -124,6 +127,7 @@ model Project {
   object  Object  @relation(fields: [objectId], references: [id], onDelete: Cascade)
   stages  ProjectStage[]
   photos  Photo[]
+  videos  Video[]
   documents Document[]
   messages Message[]
   payments Payment[]
@@ -150,6 +154,7 @@ model ProjectStage {
   
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   photos  Photo[]
+  videos  Video[]
   
   @@map("project_stages")
 }
@@ -164,6 +169,7 @@ model PhotoFolder {
   
   object Object @relation(fields: [objectId], references: [id], onDelete: Cascade)
   photos Photo[]
+  videos Video[]
   
   @@map("photo_folders")
 }
@@ -233,6 +239,59 @@ model Panorama {
   @@map("panoramas")
 }
 
+// Видео
+model Video {
+  id          Int      @id @default(autoincrement())
+  objectId    Int?
+  projectId   Int?
+  stageId     Int?
+  folderId    Int?
+  filename    String
+  originalName String
+  filePath    String
+  fileSize    Int
+  mimeType    String
+  duration    Int?     // Длительность в секундах
+  width       Int?
+  height      Int?
+  isVisibleToCustomer Boolean @default(false)
+  uploadedAt  DateTime @default(now())
+  uploadedByUserId Int?  // Кто загрузил видео (для проверки прав на удаление)
+  thumbnailFilename String?
+  thumbnailFilePath String?
+  thumbnailFileSize Int?
+  thumbnailWidth Int?
+  thumbnailHeight Int?
+  thumbnailMimeType String?
+  
+  object Object?       @relation(fields: [objectId], references: [id], onDelete: Cascade)
+  project Project?     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  stage   ProjectStage? @relation(fields: [stageId], references: [id], onDelete: SetNull)
+  folder  PhotoFolder?  @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  uploadedByUser User? @relation("UploadedVideos", fields: [uploadedByUserId], references: [id], onDelete: SetNull)
+  comments VideoComment[]
+  
+  @@map("videos")
+}
+
+// Комментарии к видео
+model VideoComment {
+  id            Int      @id @default(autoincrement())
+  videoId       Int
+  userId        Int
+  content       String
+  timestamp     Float?   // Временная метка в секундах видео
+  isAdminComment Boolean @default(false)
+  isReadByAdmin Boolean @default(false)
+  isReadByCustomer Boolean @default(false)
+  createdAt     DateTime @default(now())
+  
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("video_comments")
+}
+
 // Комментарии к панорамам
 model PanoramaComment {
   id            Int      @id @default(autoincrement())
@@ -258,6 +317,9 @@ model PhotoComment {
   photoId       Int
   userId        Int
   content       String
+  x             Float?   // Координата X точки на фото (в процентах от 0 до 100)
+  y             Float?   // Координата Y точки на фото (в процентах от 0 до 100)
+  isVisibleToCustomer Boolean @default(true) // Видимость комментария для заказчика (по умолчанию видно)
   isAdminComment Boolean @default(false)
   isReadByAdmin Boolean @default(false)
   isReadByCustomer Boolean @default(false)
