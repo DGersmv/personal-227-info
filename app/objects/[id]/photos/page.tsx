@@ -67,16 +67,9 @@ export default async function ObjectPhotosPage({
             >
               ← Назад к объекту
             </Link>
-            <div className="flex justify-between items-center">
-              <div>
-                <h1 className="text-4xl font-bold mb-2">Фотографии</h1>
-                <p className="text-gray-600">Объект: {object.title}</p>
-              </div>
-              {canUpload && (
-                <button className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition">
-                  + Загрузить фото
-                </button>
-              )}
+            <div>
+              <h1 className="text-2xl md:text-4xl font-bold mb-2">Фотографии</h1>
+              <p className="text-sm md:text-base text-gray-600">Объект: {object.title}</p>
             </div>
           </div>
 

@@ -220,20 +220,70 @@ export async function POST(
       );
     }
 
-    // TODO: Сохранить файл на сервер и создать миниатюру
-    // Пока возвращаем успех без сохранения файла
-    // В будущем нужно:
-    // 1. Сохранить файл в public/uploads/objects/[id]/photos/
-    // 2. Создать миниатюру
-    // 3. Сохранить информацию в БД
+    // Создать директорию для фото объекта, если её нет
+    const { writeFile, mkdir } = await import('fs/promises');
+    const { join } = await import('path');
+    const { existsSync } = await import('fs');
+    
+    const uploadsDir = join(process.cwd(), 'public', 'uploads', 'objects', objectId.toString(), 'photos');
+    if (!existsSync(uploadsDir)) {
+      await mkdir(uploadsDir, { recursive: true });
+    }
 
-    return NextResponse.json(
-      { 
-        message: 'Загрузка фото будет реализована в следующем шаге',
-        error: 'Функционал загрузки файлов пока не реализован'
+    // Генерировать уникальное имя файла
+    const timestamp = Date.now();
+    const originalName = file.name;
+    const fileExtension = originalName.split('.').pop()?.toLowerCase() || 'jpg';
+    const filename = `${timestamp}-${Math.random().toString(36).substring(7)}.${fileExtension}`;
+    const filePath = join(uploadsDir, filename);
+
+    // Сохранить файл
+    const bytes = await file.arrayBuffer();
+    const buffer = Buffer.from(bytes);
+    await writeFile(filePath, buffer);
+
+    // URL для доступа к файлу (относительный путь от public)
+    const url = `/uploads/objects/${objectId}/photos/${filename}`;
+
+    // Сохранить информацию о фото в БД
+    const photo = await prisma.photo.create({
+      data: {
+        objectId: objectId,
+        filename: filename,
+        originalName: originalName,
+        filePath: url,
+        fileSize: file.size,
+        mimeType: file.type,
+        isVisibleToCustomer: isVisibleToCustomer,
+        uploadedByUserId: user.id,
+        folderId: folderId ? parseInt(folderId as string) : null,
+        stageId: stageId ? parseInt(stageId as string) : null,
       },
-      { status: 501 }
-    );
+      include: {
+        folder: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        stage: {
+          select: {
+            id: true,
+            title: true,
+          },
+        },
+        _count: {
+          select: {
+            comments: true,
+          },
+        },
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      photo,
+    });
   } catch (error) {
     console.error('Ошибка загрузки фото:', error);
     return NextResponse.json(
