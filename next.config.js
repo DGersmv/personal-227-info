@@ -20,6 +20,20 @@ const nextConfig = {
 
     return config;
   },
+  // Настройка заголовков для WASM файлов
+  async headers() {
+    return [
+      {
+        source: '/wasm/:path*',
+        headers: [
+          {
+            key: 'Content-Type',
+            value: 'application/wasm',
+          },
+        ],
+      },
+    ];
+  },
 };
 
 module.exports = nextConfig;

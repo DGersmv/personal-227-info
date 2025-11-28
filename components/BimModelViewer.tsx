@@ -178,10 +178,27 @@ export default function BimModelViewer({
 
       // Настройка viewer
       console.log('[IFC] Настройка viewer...');
-      // Используем локальные WASM файлы из public/wasm
-      const wasmPath = '/wasm/';
+      // Используем абсолютный путь для WASM файлов из public/wasm
+      // Это важно, чтобы избежать проблем с относительными путями на динамических маршрутах
+      const wasmPath = typeof window !== 'undefined' 
+        ? `${window.location.origin}/wasm/`
+        : '/wasm/';
+      
+      // Проверяем доступность WASM файлов перед установкой пути
+      console.log('[IFC] Проверка доступности WASM файлов...');
+      const wasmCheckUrl = `${wasmPath}web-ifc.wasm`;
+      try {
+        const wasmCheckResponse = await fetch(wasmCheckUrl, { method: 'HEAD' });
+        console.log('[IFC] Проверка WASM файла:', wasmCheckResponse.status, wasmCheckResponse.ok);
+        if (!wasmCheckResponse.ok) {
+          console.warn('[IFC] WASM файл недоступен по пути:', wasmCheckUrl);
+        }
+      } catch (wasmError) {
+        console.warn('[IFC] Ошибка проверки WASM файла:', wasmError);
+      }
+      
       viewerRef.current.IFC.setWasmPath(wasmPath);
-      console.log('[IFC] WASM путь установлен:', wasmPath);
+      console.log('[IFC] WASM путь установлен (абсолютный):', wasmPath);
       
       viewerRef.current.clipper.active = true;
       viewerRef.current.axes.setAxes();
