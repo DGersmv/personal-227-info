@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
 
     const searchParams = request.nextUrl.searchParams;
     const query = searchParams.get('q');
-    const role = searchParams.get('role'); // DESIGNER или BUILDER
+    const role = searchParams.get('role'); // DESIGNER, BUILDER, CUSTOMER или любая роль
 
     if (!query || query.length < 2) {
       return NextResponse.json(
@@ -31,14 +31,14 @@ export async function GET(request: NextRequest) {
     // Для PostgreSQL используем ilike для case-insensitive поиска
     const where: any = {
       OR: [
-        { email: { contains: query } },
-        { name: { contains: query } },
+        { email: { contains: query, mode: 'insensitive' } },
+        { name: { contains: query, mode: 'insensitive' } },
       ],
       status: 'ACTIVE',
     };
 
-    // Фильтр по роли, если указан
-    if (role && (role === 'DESIGNER' || role === 'BUILDER')) {
+    // Фильтр по роли, если указан (теперь поддерживаем все роли)
+    if (role && ['DESIGNER', 'BUILDER', 'CUSTOMER', 'ADMIN'].includes(role)) {
       where.role = role;
     }
 

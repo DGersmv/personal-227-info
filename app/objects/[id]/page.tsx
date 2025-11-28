@@ -65,15 +65,21 @@ export default async function ObjectDetailPage({
 
   // Проверка прав доступа
   if (user.role === 'CUSTOMER') {
+    // Заказчик видит только свои объекты (где он владелец)
     if (object.userId !== user.id) {
       redirect('/objects');
     }
   } else if (user.role === 'DESIGNER' || user.role === 'BUILDER') {
-    const hasAccess = object.assignments.some((a) => a.userId === user.id);
-    if (!hasAccess && user.role !== 'ADMIN') {
+    // Проектировщик и Строитель видят:
+    // 1. Объекты, которые они создали (где они владельцы)
+    // 2. Объекты, на которые они назначены
+    const isOwner = object.userId === user.id;
+    const hasAssignment = object.assignments.some((a) => a.userId === user.id);
+    if (!isOwner && !hasAssignment && user.role !== 'ADMIN') {
       redirect('/objects');
     }
   }
+  // ADMIN имеет доступ ко всем объектам
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">

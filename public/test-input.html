@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Тест ввода</title>
+    <style>
+        body {
+            padding: 50px;
+            font-family: Arial, sans-serif;
+            background: #f0f0f0;
+        }
+        .test-box {
+            background: white;
+            padding: 30px;
+            border: 3px solid red;
+            margin: 20px 0;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 15px;
+            font-size: 18px;
+            border: 3px solid blue;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>ТЕСТ ВВОДА ТЕКСТА</h1>
+    
+    <div class="test-box">
+        <h2>Простое поле ввода (без JavaScript):</h2>
+        <input type="text" placeholder="Введите текст здесь" />
+    </div>
+    
+    <div class="test-box">
+        <h2>Поле с JavaScript обработчиком:</h2>
+        <input type="text" id="js-input" placeholder="Введите текст здесь" />
+        <p id="js-output">Введено: <span id="js-value"></span></p>
+    </div>
+    
+    <div class="test-box">
+        <h2>Textarea:</h2>
+        <textarea rows="5" placeholder="Введите текст здесь"></textarea>
+    </div>
+    
+    <script>
+        const input = document.getElementById('js-input');
+        const output = document.getElementById('js-value');
+        
+        input.addEventListener('input', function(e) {
+            output.textContent = e.target.value;
+            console.log('Введено:', e.target.value);
+        });
+        
+        input.addEventListener('keydown', function(e) {
+            console.log('KeyDown:', e.key, e.code);
+        });
+        
+        input.addEventListener('keypress', function(e) {
+            console.log('KeyPress:', e.key, e.code);
+        });
+        
+        input.addEventListener('keyup', function(e) {
+            console.log('KeyUp:', e.key, e.code);
+        });
+        
+        console.log('Скрипт загружен, поля готовы к вводу');
+    </script>
+</body>
+</html>
+

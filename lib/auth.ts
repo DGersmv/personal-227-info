@@ -48,13 +48,15 @@ export async function getCurrentUser() {
     return null;
   }
 
+  // ВАЖНО: Всегда получаем роль пользователя из базы данных, а не из токена
+  // Это гарантирует, что роль всегда актуальна и не меняется при создании объектов
   const user = await prisma.user.findUnique({
     where: { id: payload.userId },
     select: {
       id: true,
       email: true,
       name: true,
-      role: true,
+      role: true, // Системная роль пользователя - постоянная, не меняется
       status: true,
     },
   });

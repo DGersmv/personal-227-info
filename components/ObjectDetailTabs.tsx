@@ -21,6 +21,7 @@ export default function ObjectDetailTabs({
     if (pathname?.includes('/videos')) return 'videos';
     if (pathname?.includes('/panoramas')) return 'panoramas';
     if (pathname?.includes('/documents')) return 'documents';
+    if (pathname?.includes('/models')) return 'models';
     if (pathname?.includes('/messages')) return 'messages';
     return 'overview';
   };
@@ -33,6 +34,7 @@ export default function ObjectDetailTabs({
     { id: 'photos', label: 'Фото', href: `/objects/${objectId}/photos` },
     { id: 'videos', label: 'Видео', href: `/objects/${objectId}/videos` },
     { id: 'panoramas', label: 'Панорамы', href: `/objects/${objectId}/panoramas` },
+    { id: 'models', label: '3D Модели', href: `/objects/${objectId}/models` },
     { id: 'documents', label: 'Документы', href: `/objects/${objectId}/documents` },
     { id: 'messages', label: 'Сообщения', href: `/objects/${objectId}/messages` },
   ];
@@ -103,6 +105,15 @@ export default function ObjectDetailTabs({
               <h4 className="font-semibold mb-2">Панорамы</h4>
               <p className="text-sm text-gray-600">
                 Панорамные снимки 360°
+              </p>
+            </Link>
+            <Link
+              href={`/objects/${objectId}/models`}
+              className="glass rounded-lg p-4 hover:bg-white/20 transition"
+            >
+              <h4 className="font-semibold mb-2">3D Модели</h4>
+              <p className="text-sm text-gray-600">
+                BIM модели и 3D проекты
               </p>
             </Link>
             <Link

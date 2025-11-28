@@ -45,5 +45,104 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+/* Гарантируем, что поля ввода всегда доступны */
+input,
+textarea,
+select {
+  pointer-events: auto !important;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
+  color: black !important;
+  -webkit-text-fill-color: black !important;
+  caret-color: black !important;
+}
+
+/* Прозрачные placeholder - светлые и менее заметные */
+input::placeholder,
+textarea::placeholder {
+  color: #9ca3af !important;
+  opacity: 0.5 !important;
+}
+
+input::-webkit-input-placeholder,
+textarea::-webkit-input-placeholder {
+  color: #9ca3af !important;
+  opacity: 0.5 !important;
+}
+
+input::-moz-placeholder,
+textarea::-moz-placeholder {
+  color: #9ca3af !important;
+  opacity: 0.5 !important;
+}
+
+input:-ms-input-placeholder,
+textarea:-ms-input-placeholder {
+  color: #9ca3af !important;
+  opacity: 0.5 !important;
+}
+
+input:-moz-placeholder,
+textarea:-moz-placeholder {
+  color: #9ca3af !important;
+  opacity: 0.5 !important;
+}
+
+/* Более специфичные стили для разных типов input */
+input[type="text"]::placeholder,
+input[type="email"]::placeholder,
+input[type="password"]::placeholder,
+input[type="search"]::placeholder,
+input[type="tel"]::placeholder,
+input[type="url"]::placeholder,
+textarea::placeholder {
+  color: #9ca3af !important;
+  opacity: 0.5 !important;
+}
+
+input[type="text"]::-webkit-input-placeholder,
+input[type="email"]::-webkit-input-placeholder,
+input[type="password"]::-webkit-input-placeholder,
+input[type="search"]::-webkit-input-placeholder,
+input[type="tel"]::-webkit-input-placeholder,
+input[type="url"]::-webkit-input-placeholder,
+textarea::-webkit-input-placeholder {
+  color: #9ca3af !important;
+  opacity: 0.5 !important;
+}
+
+input[type="text"]::-moz-placeholder,
+input[type="email"]::-moz-placeholder,
+input[type="password"]::-moz-placeholder,
+input[type="search"]::-moz-placeholder,
+input[type="tel"]::-moz-placeholder,
+input[type="url"]::-moz-placeholder,
+textarea::-moz-placeholder {
+  color: #9ca3af !important;
+  opacity: 0.5 !important;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  pointer-events: auto !important;
+  outline: none !important;
+}
+
+/* Убираем любые блокировки на полях ввода */
+input[readonly],
+textarea[readonly] {
+  pointer-events: auto !important;
+}
+
+input[disabled],
+textarea[disabled],
+select[disabled] {
+  pointer-events: none !important;
+  opacity: 0.6;
+}
+
 
 

@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Простой тест ввода</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 50px;
+      background: white;
+    }
+    .test-box {
+      border: 5px solid red;
+      padding: 20px;
+      margin: 20px 0;
+      background: yellow;
+    }
+    input, textarea {
+      width: 100%;
+      padding: 10px;
+      font-size: 20px;
+      border: 3px solid blue;
+      margin: 10px 0;
+      box-sizing: border-box;
+    }
+    textarea {
+      border-color: green;
+    }
+    h1 {
+      color: black;
+    }
+    h2 {
+      color: black;
+    }
+    p {
+      color: black;
+      font-size: 16px;
+    }
+  </style>
+</head>
+<body>
+  <h1>ПРОСТОЙ ТЕСТ ВВОДА (ЧИСТЫЙ HTML, БЕЗ REACT)</h1>
+  
+  <div class="test-box">
+    <h2>Поле 1: Обычный input</h2>
+    <input type="text" id="input1" placeholder="Введите текст сюда" />
+    <p>Значение: <span id="value1" style="color: red; font-weight: bold;"></span></p>
+  </div>
+
+  <div class="test-box">
+    <h2>Поле 2: Input с обработчиком oninput</h2>
+    <input 
+      type="text" 
+      id="input2" 
+      placeholder="Введите текст сюда"
+      oninput="document.getElementById('value2').textContent = this.value"
+    />
+    <p>Значение: <span id="value2" style="color: red; font-weight: bold;"></span></p>
+  </div>
+
+  <div class="test-box">
+    <h2>Поле 3: Textarea</h2>
+    <textarea 
+      id="input3" 
+      rows="5" 
+      placeholder="Введите текст сюда"
+      oninput="document.getElementById('value3').textContent = this.value"
+    ></textarea>
+    <p>Значение: <span id="value3" style="color: red; font-weight: bold;"></span></p>
+  </div>
+
+  <div class="test-box">
+    <h2>Поле 4: Input с addEventListener</h2>
+    <input type="text" id="input4" placeholder="Введите текст сюда" />
+    <p>Значение: <span id="value4" style="color: red; font-weight: bold;"></span></p>
+    <p>События: <span id="events4" style="color: blue; font-size: 12px;"></span></p>
+  </div>
+
+  <script>
+    console.log('Скрипт загружен');
+    
+    const input1 = document.getElementById('input1');
+    const value1 = document.getElementById('value1');
+    
+    input1.addEventListener('keydown', function(e) {
+      console.log('KEYDOWN:', e.key, e.code, 'preventDefault:', e.defaultPrevented);
+    });
+    
+    input1.addEventListener('keypress', function(e) {
+      console.log('KEYPRESS:', e.key, e.code, 'preventDefault:', e.defaultPrevented);
+    });
+    
+    input1.addEventListener('keyup', function(e) {
+      console.log('KEYUP:', e.key, e.code, 'preventDefault:', e.defaultPrevented);
+    });
+    
+    input1.addEventListener('input', function(e) {
+      console.log('INPUT:', this.value);
+      value1.textContent = this.value;
+    });
+    
+    input1.addEventListener('focus', function() {
+      console.log('FOCUS на input1');
+    });
+    
+    input1.addEventListener('blur', function() {
+      console.log('BLUR на input1');
+    });
+
+    // Поле 4 с детальным логированием
+    const input4 = document.getElementById('input4');
+    const value4 = document.getElementById('value4');
+    const events4 = document.getElementById('events4');
+    let eventLog = [];
+
+    ['keydown', 'keypress', 'keyup', 'input', 'focus', 'blur'].forEach(eventType => {
+      input4.addEventListener(eventType, function(e) {
+        const log = `${eventType}: ${e.key || e.type}`;
+        console.log(log);
+        eventLog.push(log);
+        if (eventLog.length > 10) eventLog.shift();
+        events4.textContent = eventLog.join(' | ');
+        
+        if (eventType === 'input') {
+          value4.textContent = this.value;
+        }
+      });
+    });
+  </script>
+</body>
+</html>
+

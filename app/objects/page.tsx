@@ -20,12 +20,28 @@ export default async function ObjectsPage() {
       orderBy: { createdAt: 'desc' },
     });
   } else if (user.role === 'DESIGNER' || user.role === 'BUILDER') {
-    // Проектировщик и Строитель видят назначенные объекты
+    // Проектировщик и Строитель видят:
+    // 1. Созданные ими объекты (где они владельцы)
+    // 2. Назначенные на них объекты
+    const createdObjects = await prisma.object.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: 'desc' },
+    });
+    
     const assignments = await prisma.userObjectAssignment.findMany({
       where: { userId: user.id },
       include: { object: true },
     });
-    objects = assignments.map((a) => a.object);
+    const assignedObjects = assignments.map((a) => a.object);
+    
+    // Объединить и убрать дубликаты
+    const allObjects = [...createdObjects, ...assignedObjects];
+    const uniqueObjects = allObjects.filter((obj, index, self) =>
+      index === self.findIndex((o) => o.id === obj.id)
+    );
+    objects = uniqueObjects.sort((a, b) => 
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
   } else {
     // Админ видит все объекты
     objects = await prisma.object.findMany({
@@ -40,14 +56,12 @@ export default async function ObjectsPage() {
         <div className="max-w-6xl mx-auto">
           <div className="flex justify-between items-center mb-6">
             <h1 className="text-4xl font-bold">Объекты</h1>
-            {user.role === 'CUSTOMER' && (
-              <Link
-                href="/objects/new"
-                className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition inline-block"
-              >
-                + Создать объект
-              </Link>
-            )}
+            <Link
+              href="/objects/new"
+              className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition inline-block"
+            >
+              + Создать объект
+            </Link>
           </div>
 
           {objects.length === 0 ? (
@@ -55,14 +69,12 @@ export default async function ObjectsPage() {
               <p className="text-gray-600 text-lg mb-4">
                 У вас пока нет объектов
               </p>
-              {user.role === 'CUSTOMER' && (
-                <Link
-                  href="/objects/new"
-                  className="px-6 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition inline-block"
-                >
-                  Создать первый объект
-                </Link>
-              )}
+              <Link
+                href="/objects/new"
+                className="px-6 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition inline-block"
+              >
+                Создать первый объект
+              </Link>
             </div>
           ) : (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">

@@ -130,10 +130,10 @@ export async function POST(
       );
     }
 
-    // Проверка роли (только DESIGNER или BUILDER можно назначать)
-    if (role !== 'DESIGNER' && role !== 'BUILDER') {
+    // Проверка роли (можно назначать любые роли: DESIGNER, BUILDER, CUSTOMER)
+    if (!['DESIGNER', 'BUILDER', 'CUSTOMER'].includes(role)) {
       return NextResponse.json(
-        { error: 'Можно назначать только проектировщиков и строителей' },
+        { error: 'Недопустимая роль. Можно назначать только проектировщиков, строителей или заказчиков' },
         { status: 400 }
       );
     }
@@ -199,8 +199,13 @@ export async function POST(
 
     // Проверить, что роль пользователя соответствует назначаемой роли
     if (targetUser.role !== role) {
+      const roleNames: Record<string, string> = {
+        DESIGNER: 'Проектировщик',
+        BUILDER: 'Строитель',
+        CUSTOMER: 'Заказчик',
+      };
       return NextResponse.json(
-        { error: `Пользователь должен иметь роль ${role === 'DESIGNER' ? 'Проектировщик' : 'Строитель'}` },
+        { error: `Пользователь должен иметь роль ${roleNames[role] || role}` },
         { status: 400 }
       );
     }

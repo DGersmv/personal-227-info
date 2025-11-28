@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"  // ⚠️ ВАЖНО: PostgreSQL, не SQLite!
+  provider = "postgresql" // ⚠️ ВАЖНО: PostgreSQL, не SQLite!
   url      = env("DATABASE_URL")
 }
 
@@ -16,10 +16,10 @@ datasource db {
 
 // Роли пользователей
 enum UserRole {
-  DESIGNER  // Проектировщик
-  BUILDER   // Строитель
-  CUSTOMER  // Заказчик
-  ADMIN     // Администратор (управление системой)
+  DESIGNER // Проектировщик
+  BUILDER // Строитель
+  CUSTOMER // Заказчик
+  ADMIN // Администратор (управление системой)
 }
 
 enum UserStatus {
@@ -29,45 +29,47 @@ enum UserStatus {
 
 // Пользователи
 model User {
-  id        Int      @id @default(autoincrement())
-  email     String   @unique
+  id        Int        @id @default(autoincrement())
+  email     String     @unique
   name      String?
-  role      UserRole @default(CUSTOMER)  // Новая система ролей!
-  password  String?  // Опционально, если авторизация через insales
-  createdAt DateTime @default(now())
+  role      UserRole   @default(CUSTOMER) // Новая система ролей!
+  password  String? // Опционально, если авторизация через insales
+  createdAt DateTime   @default(now())
   lastLogin DateTime?
   status    UserStatus @default(ACTIVE)
-  metadata  String?  // JSON: телефон, компания, заметки
-  
+  metadata  String? // JSON: телефон, компания, заметки
+
   // Связи
-  objects   Object[]
-  messages  Message[]
-  photoComments PhotoComment[]
-  panoramaComments PanoramaComment[]
-  videoComments VideoComment[]
+  objects           Object[]
+  messages          Message[]
+  photoComments     PhotoComment[]
+  panoramaComments  PanoramaComment[]
+  videoComments     VideoComment[]
+  bimModelComments  BimModelComment[]
   objectAssignments UserObjectAssignment[]
-  uploadedDocuments Document[] @relation("UploadedDocuments")
-  uploadedPhotos Photo[] @relation("UploadedPhotos")
-  uploadedVideos Video[] @relation("UploadedVideos")
-  inSalesAccount InSalesAccount?
-  downloadPurchases DownloadPurchase[] @relation("DownloadPurchases")
-  payments Payment[] @relation("Payments")
-  portfolio Portfolio?
-  
+  uploadedDocuments Document[]             @relation("UploadedDocuments")
+  uploadedPhotos    Photo[]                @relation("UploadedPhotos")
+  uploadedVideos    Video[]                @relation("UploadedVideos")
+  uploadedBimModels BimModel[]             @relation("UploadedBimModels")
+  inSalesAccount    InSalesAccount?
+  downloadPurchases DownloadPurchase[]     @relation("DownloadPurchases")
+  payments          Payment[]              @relation("Payments")
+  portfolio         Portfolio?
+
   @@map("users")
 }
 
 // Назначение объектов пользователям (для разных ролей на одном объекте)
 model UserObjectAssignment {
-  id        Int      @id @default(autoincrement())
-  userId    Int
-  objectId  Int
-  role      UserRole // Роль пользователя для этого конкретного объекта
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  objectId   Int
+  role       UserRole // Роль пользователя для этого конкретного объекта
   assignedAt DateTime @default(now())
-  
+
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   object Object @relation(fields: [objectId], references: [id], onDelete: Cascade)
-  
+
   @@unique([userId, objectId])
   @@map("user_object_assignments")
 }
@@ -84,26 +86,27 @@ enum ObjectStatus {
 
 // Объекты (участки, дома и т.д.)
 model Object {
-  id          Int      @id @default(autoincrement())
-  userId      Int      // Владелец объекта (обычно Заказчик)
+  id          Int          @id @default(autoincrement())
+  userId      Int // Владелец объекта (обычно Заказчик)
   title       String
   description String?
   address     String?
   status      ObjectStatus @default(ACTIVE)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  projects  Project[]
-  photos    Photo[]
-  panoramas Panorama[]
-  videos    Video[]
-  documents Document[]
-  messages  Message[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  user         User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projects     Project[]
+  photos       Photo[]
+  panoramas    Panorama[]
+  videos       Video[]
+  documents    Document[]
+  messages     Message[]
   photoFolders PhotoFolder[]
-  assignments UserObjectAssignment[]
-  payments Payment[]
-  
+  assignments  UserObjectAssignment[]
+  payments     Payment[]
+  bimModels    BimModel[]
+
   @@map("objects")
 }
 
@@ -116,23 +119,24 @@ enum ProjectStatus {
 
 // Проекты (дизайн-проекты для объекта)
 model Project {
-  id          Int      @id @default(autoincrement())
+  id          Int           @id @default(autoincrement())
   objectId    Int
   title       String
   description String?
   status      ProjectStatus @default(PLANNING)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  object  Object  @relation(fields: [objectId], references: [id], onDelete: Cascade)
-  stages  ProjectStage[]
-  photos  Photo[]
-  videos  Video[]
-  documents Document[]
-  messages Message[]
-  payments Payment[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  object            Object             @relation(fields: [objectId], references: [id], onDelete: Cascade)
+  stages            ProjectStage[]
+  photos            Photo[]
+  videos            Video[]
+  documents         Document[]
+  messages          Message[]
+  payments          Payment[]
   portfolioProjects PortfolioProject[]
-  
+  bimModels         BimModel[]
+
   @@map("projects")
 }
 
@@ -144,65 +148,66 @@ enum StageStatus {
 
 // Этапы проекта
 model ProjectStage {
-  id          Int      @id @default(autoincrement())
+  id          Int         @id @default(autoincrement())
   projectId   Int
   title       String
   description String?
   status      StageStatus @default(PENDING)
   orderIndex  Int
-  createdAt   DateTime @default(now())
-  
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  photos  Photo[]
-  videos  Video[]
-  
+  createdAt   DateTime    @default(now())
+
+  project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  photos    Photo[]
+  videos    Video[]
+  bimModels BimModel[]
+
   @@map("project_stages")
 }
 
 // Папки для фотографий
 model PhotoFolder {
-  id          Int      @id @default(autoincrement())
-  objectId    Int
-  name        String
-  orderIndex  Int      @default(0)
-  createdAt   DateTime @default(now())
-  
-  object Object @relation(fields: [objectId], references: [id], onDelete: Cascade)
+  id         Int      @id @default(autoincrement())
+  objectId   Int
+  name       String
+  orderIndex Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  object Object  @relation(fields: [objectId], references: [id], onDelete: Cascade)
   photos Photo[]
   videos Video[]
-  
+
   @@map("photo_folders")
 }
 
 // Фотографии
 model Photo {
-  id          Int      @id @default(autoincrement())
-  objectId    Int?
-  projectId   Int?
-  stageId     Int?
-  folderId    Int?
-  filename    String
-  originalName String
-  filePath    String
-  fileSize    Int
-  mimeType    String
-  isVisibleToCustomer Boolean @default(false)
-  uploadedAt  DateTime @default(now())
-  uploadedByUserId Int?  // Кто загрузил фото (для проверки прав на удаление)
-  thumbnailFilename String?
-  thumbnailFilePath String?
-  thumbnailFileSize Int?
-  thumbnailWidth Int?
-  thumbnailHeight Int?
-  thumbnailMimeType String?
-  
-  object Object?       @relation(fields: [objectId], references: [id], onDelete: Cascade)
-  project Project?     @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  stage   ProjectStage? @relation(fields: [stageId], references: [id], onDelete: SetNull)
-  folder  PhotoFolder?  @relation(fields: [folderId], references: [id], onDelete: SetNull)
-  uploadedByUser User? @relation("UploadedPhotos", fields: [uploadedByUserId], references: [id], onDelete: SetNull)
-  comments PhotoComment[]
-  
+  id                  Int      @id @default(autoincrement())
+  objectId            Int?
+  projectId           Int?
+  stageId             Int?
+  folderId            Int?
+  filename            String
+  originalName        String
+  filePath            String
+  fileSize            Int
+  mimeType            String
+  isVisibleToCustomer Boolean  @default(false)
+  uploadedAt          DateTime @default(now())
+  uploadedByUserId    Int? // Кто загрузил фото (для проверки прав на удаление)
+  thumbnailFilename   String?
+  thumbnailFilePath   String?
+  thumbnailFileSize   Int?
+  thumbnailWidth      Int?
+  thumbnailHeight     Int?
+  thumbnailMimeType   String?
+
+  object         Object?        @relation(fields: [objectId], references: [id], onDelete: Cascade)
+  project        Project?       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  stage          ProjectStage?  @relation(fields: [stageId], references: [id], onDelete: SetNull)
+  folder         PhotoFolder?   @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  uploadedByUser User?          @relation("UploadedPhotos", fields: [uploadedByUserId], references: [id], onDelete: SetNull)
+  comments       PhotoComment[]
+
   @@map("photos")
 }
 
@@ -214,26 +219,26 @@ enum PanoramaProjection {
 
 // Панорамы
 model Panorama {
-  id          Int      @id @default(autoincrement())
-  objectId    Int
-  filename    String
-  originalName String
-  filePath    String
-  fileSize    Int
-  mimeType    String
-  isVisibleToCustomer Boolean @default(false)
-  uploadedAt  DateTime @default(now())
-  thumbnailFilename String?
-  thumbnailFilePath String?
-  thumbnailFileSize Int?
-  thumbnailWidth Int?
-  thumbnailHeight Int?
-  thumbnailMimeType String?
-  originalWidth Int?
-  originalHeight Int?
-  projectionType PanoramaProjection @default(EQUIRECTANGULAR)
+  id                  Int                @id @default(autoincrement())
+  objectId            Int
+  filename            String
+  originalName        String
+  filePath            String
+  fileSize            Int
+  mimeType            String
+  isVisibleToCustomer Boolean            @default(false)
+  uploadedAt          DateTime           @default(now())
+  thumbnailFilename   String?
+  thumbnailFilePath   String?
+  thumbnailFileSize   Int?
+  thumbnailWidth      Int?
+  thumbnailHeight     Int?
+  thumbnailMimeType   String?
+  originalWidth       Int?
+  originalHeight      Int?
+  projectionType      PanoramaProjection @default(EQUIRECTANGULAR)
 
-  object Object @relation(fields: [objectId], references: [id], onDelete: Cascade)
+  object   Object            @relation(fields: [objectId], references: [id], onDelete: Cascade)
   comments PanoramaComment[]
 
   @@map("panoramas")
@@ -241,69 +246,69 @@ model Panorama {
 
 // Видео
 model Video {
-  id          Int      @id @default(autoincrement())
-  objectId    Int?
-  projectId   Int?
-  stageId     Int?
-  folderId    Int?
-  filename    String
-  originalName String
-  filePath    String
-  fileSize    Int
-  mimeType    String
-  duration    Int?     // Длительность в секундах
-  width       Int?
-  height      Int?
-  isVisibleToCustomer Boolean @default(false)
-  uploadedAt  DateTime @default(now())
-  uploadedByUserId Int?  // Кто загрузил видео (для проверки прав на удаление)
-  thumbnailFilename String?
-  thumbnailFilePath String?
-  thumbnailFileSize Int?
-  thumbnailWidth Int?
-  thumbnailHeight Int?
-  thumbnailMimeType String?
-  
-  object Object?       @relation(fields: [objectId], references: [id], onDelete: Cascade)
-  project Project?     @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  stage   ProjectStage? @relation(fields: [stageId], references: [id], onDelete: SetNull)
-  folder  PhotoFolder?  @relation(fields: [folderId], references: [id], onDelete: SetNull)
-  uploadedByUser User? @relation("UploadedVideos", fields: [uploadedByUserId], references: [id], onDelete: SetNull)
-  comments VideoComment[]
-  
+  id                  Int      @id @default(autoincrement())
+  objectId            Int?
+  projectId           Int?
+  stageId             Int?
+  folderId            Int?
+  filename            String
+  originalName        String
+  filePath            String
+  fileSize            Int
+  mimeType            String
+  duration            Int? // Длительность в секундах
+  width               Int?
+  height              Int?
+  isVisibleToCustomer Boolean  @default(false)
+  uploadedAt          DateTime @default(now())
+  uploadedByUserId    Int? // Кто загрузил видео (для проверки прав на удаление)
+  thumbnailFilename   String?
+  thumbnailFilePath   String?
+  thumbnailFileSize   Int?
+  thumbnailWidth      Int?
+  thumbnailHeight     Int?
+  thumbnailMimeType   String?
+
+  object         Object?        @relation(fields: [objectId], references: [id], onDelete: Cascade)
+  project        Project?       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  stage          ProjectStage?  @relation(fields: [stageId], references: [id], onDelete: SetNull)
+  folder         PhotoFolder?   @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  uploadedByUser User?          @relation("UploadedVideos", fields: [uploadedByUserId], references: [id], onDelete: SetNull)
+  comments       VideoComment[]
+
   @@map("videos")
 }
 
 // Комментарии к видео
 model VideoComment {
-  id            Int      @id @default(autoincrement())
-  videoId       Int
-  userId        Int
-  content       String
-  timestamp     Float?   // Временная метка в секундах видео
-  isAdminComment Boolean @default(false)
-  isReadByAdmin Boolean @default(false)
-  isReadByCustomer Boolean @default(false)
-  createdAt     DateTime @default(now())
-  
+  id               Int      @id @default(autoincrement())
+  videoId          Int
+  userId           Int
+  content          String
+  timestamp        Float? // Временная метка в секундах видео
+  isAdminComment   Boolean  @default(false)
+  isReadByAdmin    Boolean  @default(false)
+  isReadByCustomer Boolean  @default(false)
+  createdAt        DateTime @default(now())
+
   video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
   @@map("video_comments")
 }
 
 // Комментарии к панорамам
 model PanoramaComment {
-  id            Int      @id @default(autoincrement())
-  panoramaId    Int
-  userId        Int
-  content       String
-  yaw           Float?
-  pitch         Float?
-  isAdminComment Boolean @default(false)
-  isReadByAdmin Boolean @default(false)
-  isReadByCustomer Boolean @default(false)
-  createdAt     DateTime @default(now())
+  id               Int      @id @default(autoincrement())
+  panoramaId       Int
+  userId           Int
+  content          String
+  yaw              Float?
+  pitch            Float?
+  isAdminComment   Boolean  @default(false)
+  isReadByAdmin    Boolean  @default(false)
+  isReadByCustomer Boolean  @default(false)
+  createdAt        DateTime @default(now())
 
   panorama Panorama @relation(fields: [panoramaId], references: [id], onDelete: Cascade)
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -313,21 +318,21 @@ model PanoramaComment {
 
 // Комментарии к фото
 model PhotoComment {
-  id            Int      @id @default(autoincrement())
-  photoId       Int
-  userId        Int
-  content       String
-  x             Float?   // Координата X точки на фото (в процентах от 0 до 100)
-  y             Float?   // Координата Y точки на фото (в процентах от 0 до 100)
-  isVisibleToCustomer Boolean @default(true) // Видимость комментария для заказчика (по умолчанию видно)
-  isAdminComment Boolean @default(false)
-  isReadByAdmin Boolean @default(false)
-  isReadByCustomer Boolean @default(false)
-  createdAt     DateTime @default(now())
-  
+  id                  Int      @id @default(autoincrement())
+  photoId             Int
+  userId              Int
+  content             String
+  x                   Float? // Координата X точки на фото (в процентах от 0 до 100)
+  y                   Float? // Координата Y точки на фото (в процентах от 0 до 100)
+  isVisibleToCustomer Boolean  @default(true) // Видимость комментария для заказчика (по умолчанию видно)
+  isAdminComment      Boolean  @default(false)
+  isReadByAdmin       Boolean  @default(false)
+  isReadByCustomer    Boolean  @default(false)
+  createdAt           DateTime @default(now())
+
   photo Photo @relation(fields: [photoId], references: [id], onDelete: Cascade)
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
   @@map("photo_comments")
 }
 
@@ -341,42 +346,42 @@ enum DocumentType {
 
 // Документы
 model Document {
-  id          Int      @id @default(autoincrement())
-  objectId    Int?
-  projectId   Int?
-  filename    String
-  originalName String
-  filePath    String
-  fileSize    Int
-  mimeType    String
-  documentType DocumentType @default(OTHER)
-  isPaid      Boolean  @default(false)
-  uploadedAt  DateTime @default(now())
-  uploadedByUserId Int?  // Кто загрузил документ (для проверки прав на удаление)
-  
-  object  Object?  @relation(fields: [objectId], references: [id], onDelete: Cascade)
-  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  uploadedByUser User? @relation("UploadedDocuments", fields: [uploadedByUserId], references: [id], onDelete: SetNull)
-  
+  id               Int          @id @default(autoincrement())
+  objectId         Int?
+  projectId        Int?
+  filename         String
+  originalName     String
+  filePath         String
+  fileSize         Int
+  mimeType         String
+  documentType     DocumentType @default(OTHER)
+  isPaid           Boolean      @default(false)
+  uploadedAt       DateTime     @default(now())
+  uploadedByUserId Int? // Кто загрузил документ (для проверки прав на удаление)
+
+  object         Object?  @relation(fields: [objectId], references: [id], onDelete: Cascade)
+  project        Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  uploadedByUser User?    @relation("UploadedDocuments", fields: [uploadedByUserId], references: [id], onDelete: SetNull)
+
   @@map("documents")
 }
 
 // Сообщения
 model Message {
-  id            Int      @id @default(autoincrement())
-  objectId      Int?
-  projectId     Int?
-  userId        Int
-  content       String
-  isAdminMessage Boolean @default(false)
-  isReadByAdmin Boolean @default(false)
-  isReadByCustomer Boolean @default(false)
-  createdAt     DateTime @default(now())
-  
-  object  Object? @relation(fields: [objectId], references: [id], onDelete: Cascade)
+  id               Int      @id @default(autoincrement())
+  objectId         Int?
+  projectId        Int?
+  userId           Int
+  content          String
+  isAdminMessage   Boolean  @default(false)
+  isReadByAdmin    Boolean  @default(false)
+  isReadByCustomer Boolean  @default(false)
+  createdAt        DateTime @default(now())
+
+  object  Object?  @relation(fields: [objectId], references: [id], onDelete: Cascade)
   project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@map("messages")
 }
 
@@ -387,7 +392,7 @@ model VerificationCode {
   code      String
   expiresAt DateTime
   createdAt DateTime @default(now())
-  
+
   @@map("verification_codes")
 }
 
@@ -397,20 +402,20 @@ model VerificationCode {
 
 // Связь аккаунта пользователя с insales
 model InSalesAccount {
-  id            Int      @id @default(autoincrement())
-  userId        Int      @unique
-  insalesUserId String   // ID пользователя в insales
+  id            Int       @id @default(autoincrement())
+  userId        Int       @unique
+  insalesUserId String // ID пользователя в insales
   insalesEmail  String
-  accessToken   String   // Токен доступа (можно зашифровать)
-  refreshToken  String?  // Refresh токен (если есть)
+  accessToken   String // Токен доступа (можно зашифровать)
+  refreshToken  String? // Refresh токен (если есть)
   shopDomain    String
-  isActive      Boolean  @default(true)
+  isActive      Boolean   @default(true)
   lastLogin     DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
   @@map("insales_accounts")
 }
 
@@ -419,11 +424,11 @@ model InSalesAccount {
 // ============================================
 
 enum DownloadableItemType {
-  PLUGIN      // Плагин
-  PROGRAM     // Программа
-  TEMPLATE    // Шаблон
-  LIBRARY     // Библиотека
-  OTHER       // Другое
+  PLUGIN // Плагин
+  PROGRAM // Программа
+  TEMPLATE // Шаблон
+  LIBRARY // Библиотека
+  OTHER // Другое
 }
 
 enum DownloadableItemStatus {
@@ -434,84 +439,84 @@ enum DownloadableItemStatus {
 
 // Загружаемые файлы (плагины, программы и т.д.)
 model DownloadableItem {
-  id          Int      @id @default(autoincrement())
+  id          Int                  @id @default(autoincrement())
   name        String
   description String?
   type        DownloadableItemType @default(PLUGIN)
   version     String?
   author      String?
-  
+
   // Файл
-  filename    String
-  filePath    String
-  fileSize    Int
-  mimeType    String
-  
+  filename String
+  filePath String
+  fileSize Int
+  mimeType String
+
   // Цена и оплата
-  price       Float?   // Цена в рублях (null = бесплатно)
+  price            Float? // Цена в рублях (null = бесплатно)
   insalesProductId String? // ID товара в insales
-  
+
   // Метаданные
-  category    String?  // Категория (например: "CAD плагины", "3D программы")
-  tags        String?  // JSON массив тегов
-  iconUrl     String?  // URL иконки
+  category       String? // Категория (например: "CAD плагины", "3D программы")
+  tags           String? // JSON массив тегов
+  iconUrl        String? // URL иконки
   screenshotUrls String? // JSON массив URL скриншотов
-  
+
   // Статус
-  status      DownloadableItemStatus @default(ACTIVE)
-  downloadCount Int @default(0) // Количество скачиваний
-  
+  status        DownloadableItemStatus @default(ACTIVE)
+  downloadCount Int                    @default(0) // Количество скачиваний
+
   // Даты
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Связи
-  purchases   DownloadPurchase[]
-  payments    Payment[]
-  
+  purchases DownloadPurchase[]
+  payments  Payment[]
+
   @@map("downloadable_items")
 }
 
 // Покупки загрузок
 model DownloadPurchase {
-  id          Int      @id @default(autoincrement())
-  userId      Int
-  itemId      Int
+  id             Int       @id @default(autoincrement())
+  userId         Int
+  itemId         Int
   insalesOrderId String? // ID заказа в insales
-  amount      Float?   // Сумма оплаты
-  currency    String?  @default("RUB")
-  status      String   @default("pending") // pending, paid, cancelled
-  purchasedAt DateTime?
-  createdAt   DateTime @default(now())
-  
-  user User @relation("DownloadPurchases", fields: [userId], references: [id], onDelete: Cascade)
+  amount         Float? // Сумма оплаты
+  currency       String?   @default("RUB")
+  status         String    @default("pending") // pending, paid, cancelled
+  purchasedAt    DateTime?
+  createdAt      DateTime  @default(now())
+
+  user User             @relation("DownloadPurchases", fields: [userId], references: [id], onDelete: Cascade)
   item DownloadableItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  
+
   @@unique([userId, itemId])
   @@map("download_purchases")
 }
 
 // Платежи через insales
 model Payment {
-  id            Int      @id @default(autoincrement())
-  userId        Int
-  objectId      Int?
-  projectId     Int?
+  id                 Int      @id @default(autoincrement())
+  userId             Int
+  objectId           Int?
+  projectId          Int?
   downloadableItemId Int? // Для оплаты загрузок
-  insalesOrderId String? // ID заказа в insales
-  amount        Float
-  currency      String   @default("RUB")
-  status        String   // pending, paid, cancelled, refunded
-  paymentMethod String?
-  metadata      String?  // JSON: дополнительные данные
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  
-  user User @relation("Payments", fields: [userId], references: [id], onDelete: Cascade)
-  object Object? @relation(fields: [objectId], references: [id], onDelete: SetNull)
-  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  insalesOrderId     String? // ID заказа в insales
+  amount             Float
+  currency           String   @default("RUB")
+  status             String // pending, paid, cancelled, refunded
+  paymentMethod      String?
+  metadata           String? // JSON: дополнительные данные
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  user             User              @relation("Payments", fields: [userId], references: [id], onDelete: Cascade)
+  object           Object?           @relation(fields: [objectId], references: [id], onDelete: SetNull)
+  project          Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
   downloadableItem DownloadableItem? @relation(fields: [downloadableItemId], references: [id], onDelete: SetNull)
-  
+
   @@map("payments")
 }
 
@@ -521,70 +526,157 @@ model Payment {
 
 // Портфолио пользователя (для Проектировщиков и Строителей)
 model Portfolio {
-  id          Int      @id @default(autoincrement())
-  userId      Int      @unique
-  
+  id     Int @id @default(autoincrement())
+  userId Int @unique
+
   // Основная информация
-  title       String?  // Заголовок портфолио
-  description String?  // Описание портфолио
-  bio         String?  // Биография / О себе
-  
+  title       String? // Заголовок портфолио
+  description String? // Описание портфолио
+  bio         String? // Биография / О себе
+
   // Контакты и социальные сети
   phone       String?
   website     String?
-  socialLinks String?  // JSON: { linkedin, instagram, vk, telegram и т.д. }
-  
+  socialLinks String? // JSON: { linkedin, instagram, vk, telegram и т.д. }
+
   // Визуальное оформление
-  avatarUrl   String?  // URL аватара
-  coverImageUrl String? // URL обложки портфолио
+  avatarUrl       String? // URL аватара
+  coverImageUrl   String? // URL обложки портфолио
   backgroundColor String? // Цвет фона (hex)
-  
+
   // Настройки видимости
-  isPublic    Boolean  @default(false) // Публичное портфолио
-  showEmail   Boolean  @default(false) // Показывать email
-  showPhone   Boolean  @default(false) // Показывать телефон
-  
+  isPublic  Boolean @default(false) // Публичное портфолио
+  showEmail Boolean @default(false) // Показывать email
+  showPhone Boolean @default(false) // Показывать телефон
+
   // Статистика
-  viewCount   Int      @default(0) // Количество просмотров
-  
+  viewCount Int @default(0) // Количество просмотров
+
   // Даты
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Связи
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user     User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   projects PortfolioProject[]
-  
+
   @@map("portfolios")
 }
 
 // Проекты в портфолио
 model PortfolioProject {
-  id          Int      @id @default(autoincrement())
+  id          Int  @id @default(autoincrement())
   portfolioId Int
-  projectId   Int?     // Связь с реальным проектом (опционально)
-  
+  projectId   Int? // Связь с реальным проектом (опционально)
+
   // Информация о проекте в портфолио
   title       String
   description String?
-  imageUrl    String?  // Главное изображение проекта
-  category    String?  // Категория проекта
-  tags        String?  // JSON массив тегов
-  
+  imageUrl    String? // Главное изображение проекта
+  category    String? // Категория проекта
+  tags        String? // JSON массив тегов
+
   // Порядок отображения
-  orderIndex  Int      @default(0)
-  
+  orderIndex Int @default(0)
+
   // Видимость
-  isVisible   Boolean  @default(true)
-  
+  isVisible Boolean @default(true)
+
   // Даты
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Связи
   portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
-  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  
+  project   Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
   @@map("portfolio_projects")
 }
 
+// ============================================
+// 3D МОДЕЛИ (BIM)
+// ============================================
+
+enum BimModelFormat {
+  SKETCHUP // SketchUp (.skp)
+  REVIT // Revit (.rvt)
+  ARCHICAD // ArchiCAD (.pln, .pla)
+  IFC // Industry Foundation Classes (.ifc)
+  GLTF // glTF (.gltf, .glb)
+  OBJ // Wavefront OBJ (.obj)
+  THREE_DS // 3D Studio (.3ds)
+  OTHER // Другие форматы
+}
+
+// 3D модели для проектов
+model BimModel {
+  id        Int  @id @default(autoincrement())
+  objectId  Int?
+  projectId Int?
+  stageId   Int?
+
+  // Метаданные
+  name        String
+  description String?
+  version     String? // Версия модели (например: "v1.0", "v2.1")
+
+  // Исходный файл (обязательный)
+  originalFilename String
+  originalFilePath String
+  originalFileSize Int
+  originalMimeType String
+  originalFormat   BimModelFormat // Формат исходного файла
+
+  // Файл для просмотра (опциональный - IFC или glTF)
+  viewableFilename String? // Имя файла для просмотра
+  viewableFilePath String? // Путь к файлу для просмотра
+  viewableFileSize Int? // Размер файла для просмотра
+  viewableMimeType String? // MIME тип файла для просмотра
+  viewableFormat   BimModelFormat? // Формат файла для просмотра (IFC или GLTF)
+
+  // Превью/миниатюра
+  thumbnailFilename String?
+  thumbnailFilePath String?
+  thumbnailFileSize Int?
+  thumbnailWidth    Int?
+  thumbnailHeight   Int?
+  thumbnailMimeType String?
+
+  // Видимость и статус
+  isVisibleToCustomer Boolean @default(false)
+
+  // Автор
+  uploadedByUserId Int?
+  uploadedAt       DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Связи
+  object         Object?           @relation(fields: [objectId], references: [id], onDelete: Cascade)
+  project        Project?          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  stage          ProjectStage?     @relation(fields: [stageId], references: [id], onDelete: SetNull)
+  uploadedByUser User?             @relation("UploadedBimModels", fields: [uploadedByUserId], references: [id], onDelete: SetNull)
+  comments       BimModelComment[]
+
+  @@map("bim_models")
+}
+
+// Комментарии к 3D моделям
+model BimModelComment {
+  id                  Int      @id @default(autoincrement())
+  bimModelId          Int
+  userId              Int
+  content             String
+  x                   Float? // Координата X в 3D пространстве
+  y                   Float? // Координата Y в 3D пространстве
+  z                   Float? // Координата Z в 3D пространстве
+  isVisibleToCustomer Boolean  @default(true)
+  isAdminComment      Boolean  @default(false)
+  isReadByAdmin       Boolean  @default(false)
+  isReadByCustomer    Boolean  @default(false)
+  createdAt           DateTime @default(now())
+
+  bimModel BimModel @relation(fields: [bimModelId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("bim_model_comments")
+}

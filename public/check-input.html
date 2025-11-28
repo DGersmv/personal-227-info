@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Проверка ввода</title>
+</head>
+<body style="padding: 50px; font-family: Arial;">
+    <h1>ПРОСТЕЙШИЙ ТЕСТ</h1>
+    <p>Попробуйте ввести текст в поле ниже:</p>
+    <input type="text" style="width: 500px; padding: 20px; font-size: 20px; border: 5px solid red;" />
+    
+    <h2>Проверка:</h2>
+    <p>1. Работает ли ввод в адресной строке браузера?</p>
+    <p>2. Работает ли ввод в других программах (Блокнот, Word)?</p>
+    <p>3. Откройте консоль (F12) и выполните:</p>
+    <pre style="background: #f0f0f0; padding: 10px;">
+document.querySelector('input').focus();
+// Затем попробуйте ввести текст
+    </pre>
+    
+    <script>
+        console.log('Страница загружена');
+        console.log('Попробуйте ввести текст в поле выше');
+        
+        const input = document.querySelector('input');
+        input.addEventListener('keydown', function(e) {
+            console.log('KEYDOWN:', e.key, e.code, 'preventDefault:', e.defaultPrevented);
+        });
+        input.addEventListener('keypress', function(e) {
+            console.log('KEYPRESS:', e.key, e.code, 'preventDefault:', e.defaultPrevented);
+        });
+        input.addEventListener('keyup', function(e) {
+            console.log('KEYUP:', e.key, e.code);
+        });
+        input.addEventListener('input', function(e) {
+            console.log('INPUT:', e.target.value);
+        });
+    </script>
+</body>
+</html>
+

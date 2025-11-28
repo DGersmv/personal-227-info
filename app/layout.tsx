@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import InputFix from '@/components/InputFix';
 
 export const metadata: Metadata = {
   title: 'Personal227Info - Управление проектами',
@@ -13,7 +14,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ru">
+      <head>
+      </head>
       <body className="antialiased">
+        <InputFix />
         {children}
       </body>
     </html>
