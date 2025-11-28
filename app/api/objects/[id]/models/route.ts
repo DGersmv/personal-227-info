@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { existsSync } from 'fs';
+import { generateIFCTree } from '@/lib/generateIFCTree';
 
 /**
  * GET /api/objects/[id]/models - Получить список 3D моделей объекта
@@ -318,6 +319,8 @@ export async function POST(
         },
       },
     });
+
+    // Дерево параметров будет сгенерировано на клиенте при первом открытии модели
 
     return NextResponse.json({
       success: true,

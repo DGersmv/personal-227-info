@@ -169,3 +169,4 @@ DATABASE_URL="postgresql://user:password@localhost:5432/dbname"
 JWT_SECRET="your-secret-key-here"
 ```
 
+
