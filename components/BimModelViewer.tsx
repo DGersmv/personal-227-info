@@ -87,6 +87,8 @@ export default function BimModelViewer({
   const [selectedPoint, setSelectedPoint] = useState<{ x: number; y: number; z: number } | null>(null);
   const [commentText, setCommentText] = useState('');
   const [showCommentForm, setShowCommentForm] = useState(false);
+  const [selectedCommentId, setSelectedCommentId] = useState<number | null>(null);
+  const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
 
   // Синхронизируем ref с состоянием
   useEffect(() => {
@@ -113,6 +115,34 @@ export default function BimModelViewer({
 
   // Ref для commentMode, чтобы обработчик клика всегда видел актуальное значение
   const commentModeRef = useRef(false);
+
+  // Группа для маркеров комментариев на 3D модели
+  const commentMarkersGroupRef = useRef<THREE.Group | null>(null);
+
+  // Превью-маркер для показа точки прилипания
+  const previewMarkerRef = useRef<THREE.Mesh | null>(null);
+  const previewLineRef = useRef<THREE.Line | null>(null);
+  const previewUpdateTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Gizmo для установки комментариев
+  const gizmoGroupRef = useRef<THREE.Group | null>(null);
+  const gizmoCenterRef = useRef<THREE.Mesh | null>(null);
+  const gizmoAxesRef = useRef<{ x: THREE.ArrowHelper | null; y: THREE.ArrowHelper | null; z: THREE.ArrowHelper | null }>({
+    x: null,
+    y: null,
+    z: null,
+  });
+  // Невидимые цилиндры для raycasting по стрелкам
+  const gizmoAxisCylindersRef = useRef<{ x: THREE.Mesh | null; y: THREE.Mesh | null; z: THREE.Mesh | null }>({
+    x: null,
+    y: null,
+    z: null,
+  });
+  const activeAxisRef = useRef<'x' | 'y' | 'z' | null>(null);
+  const isDraggingRef = useRef(false);
+  const dragStartMouseRef = useRef<{ x: number; y: number } | null>(null);
+  const dragStartGizmoPosRef = useRef<THREE.Vector3 | null>(null);
+  const originalModelOpacityRef = useRef<Map<THREE.Mesh, number>>(new Map());
 
   // Функция для построения иерархического дерева из Fragments schema
   const buildIFCTree = async (modelFragment: any): Promise<IFCTreeNode | null> => {
@@ -582,7 +612,37 @@ export default function BimModelViewer({
         }
       }
 
-      // 2. Dispose ThatOpen Components (останавливает рендер, очищает WebGL и т.д.)
+      // 2. Очищаем маркеры комментариев
+      if (commentMarkersGroupRef.current) {
+        try {
+          while (commentMarkersGroupRef.current.children.length > 0) {
+            const child = commentMarkersGroupRef.current.children[0];
+            if (child instanceof THREE.Mesh) {
+              (child.geometry as THREE.BufferGeometry).dispose();
+              if (Array.isArray(child.material)) {
+                child.material.forEach((mat) => mat.dispose());
+              } else {
+                child.material.dispose();
+              }
+            }
+            commentMarkersGroupRef.current.remove(child);
+          }
+          // Безопасно пытаемся удалить группу из сцены
+          try {
+            const world = worldRef.current as any;
+            if (world && world.scene && world.scene.three) {
+              world.scene.three.remove(commentMarkersGroupRef.current);
+            }
+          } catch (e) {
+            // Если сцена уже уничтожена ("No scene initialized!"), просто игнорируем
+          }
+        } catch (e) {
+          // Игнорируем ошибки
+        }
+        commentMarkersGroupRef.current = null;
+      }
+
+      // 3. Dispose ThatOpen Components (останавливает рендер, очищает WebGL и т.д.)
       if (componentsRef.current) {
         try {
           componentsRef.current.dispose();
@@ -591,11 +651,80 @@ export default function BimModelViewer({
         }
         componentsRef.current = null;
       }
+      // После dispose больше нельзя трогать World/Fragments
+      worldRef.current = null;
+      fragmentsRef.current = null;
+      modelFragmentRef.current = null;
 
-      // 3. Удаляем обработчик правой кнопки мыши для комментариев
-      if (ifcHostRef.current && (ifcHostRef.current as any)._commentClickHandler) {
-        ifcHostRef.current.removeEventListener('contextmenu', (ifcHostRef.current as any)._commentClickHandler);
-        delete (ifcHostRef.current as any)._commentClickHandler;
+      // 4. Очищаем таймер превью-маркера
+      if (previewUpdateTimerRef.current) {
+        clearTimeout(previewUpdateTimerRef.current);
+        previewUpdateTimerRef.current = null;
+      }
+
+      // 5. Удаляем превью-маркер и линию
+      if (previewMarkerRef.current) {
+        try {
+          if (previewMarkerRef.current.geometry) {
+            previewMarkerRef.current.geometry.dispose();
+          }
+          if (previewMarkerRef.current.material) {
+            if (Array.isArray(previewMarkerRef.current.material)) {
+              previewMarkerRef.current.material.forEach((mat) => mat.dispose());
+            } else {
+              previewMarkerRef.current.material.dispose();
+            }
+          }
+          try {
+            const world = worldRef.current as any;
+            if (world && world.scene && world.scene.three) {
+              world.scene.three.remove(previewMarkerRef.current);
+            }
+          } catch (e) {
+            // Сцена уже могла быть уничтожена
+          }
+        } catch (e) {
+          // Игнорируем ошибки
+        }
+        previewMarkerRef.current = null;
+      }
+
+      if (previewLineRef.current) {
+        try {
+          if (previewLineRef.current.geometry) {
+            previewLineRef.current.geometry.dispose();
+          }
+          if (previewLineRef.current.material) {
+            if (Array.isArray(previewLineRef.current.material)) {
+              previewLineRef.current.material.forEach((mat) => mat.dispose());
+            } else {
+              previewLineRef.current.material.dispose();
+            }
+          }
+          try {
+            const world = worldRef.current as any;
+            if (world && world.scene && world.scene.three) {
+              world.scene.three.remove(previewLineRef.current);
+            }
+          } catch (e) {
+            // Сцена уже могла быть уничтожена
+          }
+        } catch (e) {
+          // Игнорируем ошибки
+        }
+        previewLineRef.current = null;
+      }
+
+      // 6. Удаляем обработчики мыши
+      if (ifcHostRef.current) {
+        if ((ifcHostRef.current as any)._commentClickHandler) {
+          ifcHostRef.current.removeEventListener('contextmenu', (ifcHostRef.current as any)._commentClickHandler);
+          delete (ifcHostRef.current as any)._commentClickHandler;
+        }
+        if ((ifcHostRef.current as any)._previewMouseHandler) {
+          ifcHostRef.current.removeEventListener('mousemove', (ifcHostRef.current as any)._previewMouseHandler);
+          delete (ifcHostRef.current as any)._previewMouseHandler;
+        }
       }
 
       // 4. Чистим только host-контейнеры (внутренние), НЕ трогая внешние контейнеры с React-оверлеем
@@ -730,6 +859,49 @@ export default function BimModelViewer({
         // Сохраняем ссылку на модель для управления видимостью
         modelFragmentRef.current = modelFragment;
 
+        // Создаем группу для маркеров комментариев
+        const commentMarkersGroup = new THREE.Group();
+        commentMarkersGroup.name = 'commentMarkers';
+        world.scene.three.add(commentMarkersGroup);
+        commentMarkersGroupRef.current = commentMarkersGroup;
+
+        // Если комментарии уже загружены, сразу отрисуем маркеры,
+        // чтобы их было видно без дополнительных кликов
+        if (comments.length > 0) {
+          setTimeout(() => {
+            if (commentMarkersGroupRef.current && worldRef.current) {
+              updateCommentMarkers();
+            }
+          }, 100);
+        }
+
+        // Создаем превью-маркер (сфера для показа точки прилипания)
+        const previewGeometry = new THREE.SphereGeometry(0.15, 16, 16);
+        const previewMaterial = new THREE.MeshBasicMaterial({
+          color: 0xffaa00, // Оранжевый цвет для превью
+          transparent: true,
+          opacity: 0.6,
+        });
+        const previewMarker = new THREE.Mesh(previewGeometry, previewMaterial);
+        previewMarker.visible = false;
+        previewMarker.name = 'previewMarker';
+        world.scene.three.add(previewMarker);
+        previewMarkerRef.current = previewMarker;
+
+        // Создаем линию от курсора до точки на поверхности
+        const lineGeometry = new THREE.BufferGeometry();
+        const lineMaterial = new THREE.LineBasicMaterial({
+          color: 0xffaa00,
+          transparent: true,
+          opacity: 0.4,
+          linewidth: 2,
+        });
+        const previewLine = new THREE.Line(lineGeometry, lineMaterial);
+        previewLine.visible = false;
+        previewLine.name = 'previewLine';
+        world.scene.three.add(previewLine);
+        previewLineRef.current = previewLine;
+
         // Добавляем обработчик правой кнопки мыши для создания комментариев
         if (host && world.camera) {
           const raycaster = new THREE.Raycaster();
@@ -745,34 +917,183 @@ export default function BimModelViewer({
             event.preventDefault();
             event.stopPropagation();
 
-            const rect = host.getBoundingClientRect();
-            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+            try {
+              // В режиме gizmo используем позицию gizmo
+              if (gizmoGroupRef.current && gizmoGroupRef.current.position) {
+                const gizmoPos = gizmoGroupRef.current.position;
+                setSelectedPoint({ x: gizmoPos.x, y: gizmoPos.y, z: gizmoPos.z });
+                setShowCommentForm(true);
+                return;
+              }
 
-            // Используем камеру из world
-            const camera = world.camera.three;
-            if (!camera) {
+              // Fallback: используем старый метод raycasting (если gizmo не создан)
+              const rect = host.getBoundingClientRect();
+              mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+              mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+              // Используем камеру из world
+              const camera = world.camera.three;
+              if (!camera || !modelFragment || !modelFragment.object) {
+                console.warn('Модель еще не загружена');
+                return;
+              }
+
+              // Ограничиваем дальность луча для более предсказуемого поведения
+              raycaster.far = 200; // Ограничиваем дальность поиска
+              raycaster.setFromCamera(mouse, camera);
+              
+              // Для Fragments нужно проверять все дочерние объекты
+              // modelFragment.object - это THREE.Group, который содержит все фрагменты
+              // Используем try-catch для безопасной обработки ошибок геометрии
+              let intersects: THREE.Intersection[] = [];
+              
+              try {
+                // Ищем строго по направлению луча - только точные пересечения
+                intersects = raycaster.intersectObject(modelFragment.object, true);
+              } catch (raycastError) {
+                console.warn('Ошибка при определении пересечения:', raycastError);
+              }
+
+              let selectedPoint: THREE.Vector3 | null = null;
+
+              // Используем только точное пересечение луча с геометрией
+              // Ближайшее пересечение = то, что находится строго на пути луча
+              if (intersects.length > 0 && intersects[0].point) {
+                selectedPoint = intersects[0].point.clone();
+              } else {
+                // Если пересечение не найдено, используем точку на луче на фиксированном расстоянии
+                // НЕ ищем вокруг луча - это делает поведение предсказуемым
+                selectedPoint = raycaster.ray.origin.clone().add(
+                  raycaster.ray.direction.clone().multiplyScalar(50)
+                );
+              }
+
+              if (selectedPoint) {
+                setSelectedPoint({ x: selectedPoint.x, y: selectedPoint.y, z: selectedPoint.z });
+                setShowCommentForm(true);
+              }
+            } catch (error) {
+              console.error('Ошибка при обработке клика для комментария:', error);
+              // В случае ошибки просто игнорируем клик
+            }
+          };
+
+          // Функция для обновления превью-маркера при движении мыши
+          const updatePreviewMarker = (event: MouseEvent) => {
+            // Очищаем предыдущий таймер
+            if (previewUpdateTimerRef.current) {
+              clearTimeout(previewUpdateTimerRef.current);
+            }
+
+            // Используем ref для получения актуального значения commentMode
+            // В режиме gizmo не показываем превью-маркер
+            if (!commentModeRef.current || gizmoGroupRef.current) {
+              if (previewMarkerRef.current) {
+                previewMarkerRef.current.visible = false;
+              }
+              if (previewLineRef.current) {
+                previewLineRef.current.visible = false;
+              }
               return;
             }
 
-            raycaster.setFromCamera(mouse, camera);
-            
-            // Для Fragments нужно проверять все дочерние объекты
-            // modelFragment.object - это THREE.Group, который содержит все фрагменты
-            const intersects = raycaster.intersectObject(modelFragment.object, true);
+            // Обновляем с небольшой задержкой для оптимизации
+            previewUpdateTimerRef.current = setTimeout(() => {
+              if (!commentModeRef.current || !modelFragment || !modelFragment.object) {
+                return;
+              }
 
-            if (intersects.length > 0) {
-              const point = intersects[0].point;
-              setSelectedPoint({ x: point.x, y: point.y, z: point.z });
-              setShowCommentForm(true);
-            }
+              try {
+                const rect = host.getBoundingClientRect();
+                mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+                mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+                const camera = world.camera.three;
+                if (!camera) {
+                  return;
+                }
+
+                // Ограничиваем дальность луча для более предсказуемого поведения
+                raycaster.far = 200; // Ограничиваем дальность поиска
+                raycaster.setFromCamera(mouse, camera);
+
+                let previewPoint: THREE.Vector3 | null = null;
+                let intersects: THREE.Intersection[] = [];
+
+                try {
+                  // Ищем строго по направлению луча - только точные пересечения
+                  intersects = raycaster.intersectObject(modelFragment.object, true);
+                } catch (raycastError) {
+                  // Игнорируем ошибки
+                }
+
+                // Используем только точное пересечение луча с геометрией
+                // Ближайшее пересечение = то, что находится строго на пути луча
+                if (intersects.length > 0 && intersects[0].point) {
+                  previewPoint = intersects[0].point.clone();
+                } else {
+                  // Если пересечение не найдено, используем точку на луче на фиксированном расстоянии
+                  // НЕ ищем вокруг луча - это делает поведение предсказуемым
+                  previewPoint = raycaster.ray.origin.clone().add(
+                    raycaster.ray.direction.clone().multiplyScalar(50)
+                  );
+                }
+
+                if (previewPoint && previewMarkerRef.current && previewLineRef.current) {
+                  // Обновляем позицию превью-маркера
+                  previewMarkerRef.current.position.copy(previewPoint);
+                  previewMarkerRef.current.visible = true;
+
+                  // Обновляем линию от курсора до точки
+                  // Вычисляем точку на луче для начала линии (ближе к камере)
+                  const lineStart = raycaster.ray.origin.clone().add(
+                    raycaster.ray.direction.clone().multiplyScalar(5)
+                  );
+                  
+                  const positions = new Float32Array([
+                    lineStart.x, lineStart.y, lineStart.z,
+                    previewPoint.x, previewPoint.y, previewPoint.z,
+                  ]);
+                  previewLineRef.current.geometry.setAttribute(
+                    'position',
+                    new THREE.BufferAttribute(positions, 3)
+                  );
+                  previewLineRef.current.visible = true;
+
+                  // Обновляем рендерер
+                  if (fragmentsRef.current && fragmentsRef.current.core) {
+                    fragmentsRef.current.core.update(true);
+                  }
+                } else {
+                  // Скрываем превью, если точка не найдена
+                  if (previewMarkerRef.current) {
+                    previewMarkerRef.current.visible = false;
+                  }
+                  if (previewLineRef.current) {
+                    previewLineRef.current.visible = false;
+                  }
+                }
+              } catch (error) {
+                // Игнорируем ошибки
+                if (previewMarkerRef.current) {
+                  previewMarkerRef.current.visible = false;
+                }
+                if (previewLineRef.current) {
+                  previewLineRef.current.visible = false;
+                }
+              }
+            }, 50); // Задержка 50мс для оптимизации
           };
+
+          // Добавляем обработчик движения мыши для превью-маркера
+          host.addEventListener('mousemove', updatePreviewMarker);
 
           // Добавляем обработчик правой кнопки мыши
           host.addEventListener('contextmenu', handleRightClick);
 
-          // Сохраняем обработчик для очистки
+          // Сохраняем обработчики для очистки
           (host as any)._commentClickHandler = handleRightClick;
+          (host as any)._previewMouseHandler = updatePreviewMarker;
         }
 
         // Извлекаем фильтры из Fragments schema (spatial_structure, categories, attributes)
@@ -944,6 +1265,407 @@ export default function BimModelViewer({
     }
   };
 
+  // Функция для поиска ближайшей точки на поверхности модели через BVH
+  const findClosestPointOnSurface = (
+    object: THREE.Object3D,
+    rayOrigin: THREE.Vector3,
+    rayDirection: THREE.Vector3
+  ): THREE.Vector3 | null => {
+    // Ограничиваем длину луча - ищем только в ближайшей области
+    const maxRayLength = 200; // Максимальная длина луча для поиска
+    const searchDistances = [20, 50, 100, 150, 200]; // Разные расстояния для поиска (в пределах maxRayLength)
+    let closestPoint: THREE.Vector3 | null = null;
+    let minDistanceToRay = Infinity;
+
+    // Пробуем найти точку на разных расстояниях вдоль луча (в пределах ограничения)
+    for (const dist of searchDistances) {
+      if (dist > maxRayLength) break; // Не выходим за пределы ограничения
+      
+      const pointOnRay = rayOrigin.clone().add(rayDirection.clone().multiplyScalar(dist));
+      
+      // Ищем ближайшую точку на поверхности к этой точке на луче
+      object.traverse((child: THREE.Object3D) => {
+        if (child instanceof THREE.Mesh && child.geometry) {
+          const geometry = child.geometry;
+          const mesh = child;
+
+          // Проверяем, есть ли BVH в геометрии
+          const boundsTree = (geometry as any).boundsTree;
+          if (boundsTree) {
+            try {
+              // Преобразуем точку на луче в локальные координаты меша
+              const localPoint = pointOnRay.clone().applyMatrix4(
+                new THREE.Matrix4().copy(mesh.matrixWorld).invert()
+              );
+
+              const projectedPoint = new THREE.Vector3();
+              const normal = new THREE.Vector3();
+              const distance = boundsTree.closestPointToPoint(
+                localPoint,
+                projectedPoint,
+                normal,
+                12 // Радиус поиска (уменьшен для более точного прицеливания)
+              );
+
+              if (distance !== null) {
+                // Преобразуем обратно в мировые координаты
+                projectedPoint.applyMatrix4(mesh.matrixWorld);
+                
+                // Вычисляем расстояние от точки на луче до найденной точки на поверхности
+                const distanceToRay = pointOnRay.distanceTo(projectedPoint);
+                
+                // Выбираем ближайшую к лучу точку (строгое ограничение расстояния)
+                if (distanceToRay < minDistanceToRay && distanceToRay < 12) {
+                  minDistanceToRay = distanceToRay;
+                  closestPoint = projectedPoint;
+                }
+              }
+            } catch (e) {
+              // Игнорируем ошибки BVH
+            }
+          } else {
+            // Если BVH нет, используем простой поиск по геометрии
+            try {
+              const position = geometry.attributes.position;
+              if (position) {
+                // Ищем ближайшую вершину к точке на луче
+                for (let i = 0; i < position.count; i++) {
+                  const vertex = new THREE.Vector3();
+                  vertex.fromBufferAttribute(position, i);
+                  vertex.applyMatrix4(mesh.matrixWorld);
+
+                  const distanceToRay = pointOnRay.distanceTo(vertex);
+                  if (distanceToRay < minDistanceToRay && distanceToRay < 12) {
+                    minDistanceToRay = distanceToRay;
+                    closestPoint = vertex;
+                  }
+                }
+              }
+            } catch (e) {
+              // Игнорируем ошибки
+            }
+          }
+        }
+      });
+    }
+
+    // Если не нашли точку, используем точку на луче в пределах ограничения
+    if (!closestPoint) {
+      closestPoint = rayOrigin.clone().add(rayDirection.clone().multiplyScalar(Math.min(50, maxRayLength)));
+    }
+
+    return closestPoint;
+  };
+
+  // Функция для создания gizmo (шарик с осями)
+  const createGizmo = (): void => {
+    if (!worldRef.current || !worldRef.current.scene) {
+      return;
+    }
+
+    // Удаляем существующий gizmo, если есть
+    if (gizmoGroupRef.current) {
+      worldRef.current.scene.three.remove(gizmoGroupRef.current);
+      gizmoGroupRef.current = null;
+    }
+
+    const world = worldRef.current;
+    const camera = world.camera.three;
+    if (!camera) {
+      return;
+    }
+
+    // Создаем группу для gizmo
+    const gizmoGroup = new THREE.Group();
+    gizmoGroup.name = 'commentGizmo';
+
+    // Центральный шарик
+    const centerGeometry = new THREE.SphereGeometry(0.3, 16, 16);
+    const centerMaterial = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.9,
+    });
+    const centerSphere = new THREE.Mesh(centerGeometry, centerMaterial);
+    gizmoGroup.add(centerSphere);
+    gizmoCenterRef.current = centerSphere;
+
+    // Размер стрелок (фиксированный)
+    const arrowLength = 1.5;
+    const arrowHeadLength = 0.3;
+    const arrowHeadWidth = 0.2;
+    const cylinderRadius = 0.08; // Радиус цилиндра для raycasting
+
+    // Ось X (красная)
+    const dirX = new THREE.Vector3(1, 0, 0);
+    const originX = new THREE.Vector3(0, 0, 0);
+    const arrowX = new THREE.ArrowHelper(dirX, originX, arrowLength, 0xff0000, arrowHeadLength, arrowHeadWidth);
+    arrowX.name = 'axisX';
+    (arrowX.userData as any).axis = 'x';
+    gizmoGroup.add(arrowX);
+    gizmoAxesRef.current.x = arrowX;
+
+    // Невидимый цилиндр для raycasting по оси X
+    const cylinderX = new THREE.CylinderGeometry(cylinderRadius, cylinderRadius, arrowLength, 8);
+    const materialX = new THREE.MeshBasicMaterial({ visible: false });
+    const meshX = new THREE.Mesh(cylinderX, materialX);
+    meshX.rotation.z = Math.PI / 2;
+    meshX.position.x = arrowLength / 2;
+    meshX.name = 'axisXCylinder';
+    (meshX.userData as any).axis = 'x';
+    gizmoGroup.add(meshX);
+    gizmoAxisCylindersRef.current.x = meshX;
+
+    // Ось Y (зеленая)
+    const dirY = new THREE.Vector3(0, 1, 0);
+    const originY = new THREE.Vector3(0, 0, 0);
+    const arrowY = new THREE.ArrowHelper(dirY, originY, arrowLength, 0x00ff00, arrowHeadLength, arrowHeadWidth);
+    arrowY.name = 'axisY';
+    (arrowY.userData as any).axis = 'y';
+    gizmoGroup.add(arrowY);
+    gizmoAxesRef.current.y = arrowY;
+
+    // Невидимый цилиндр для raycasting по оси Y
+    const cylinderY = new THREE.CylinderGeometry(cylinderRadius, cylinderRadius, arrowLength, 8);
+    const materialY = new THREE.MeshBasicMaterial({ visible: false });
+    const meshY = new THREE.Mesh(cylinderY, materialY);
+    meshY.position.y = arrowLength / 2;
+    meshY.name = 'axisYCylinder';
+    (meshY.userData as any).axis = 'y';
+    gizmoGroup.add(meshY);
+    gizmoAxisCylindersRef.current.y = meshY;
+
+    // Ось Z (синяя)
+    const dirZ = new THREE.Vector3(0, 0, 1);
+    const originZ = new THREE.Vector3(0, 0, 0);
+    const arrowZ = new THREE.ArrowHelper(dirZ, originZ, arrowLength, 0x0000ff, arrowHeadLength, arrowHeadWidth);
+    arrowZ.name = 'axisZ';
+    (arrowZ.userData as any).axis = 'z';
+    gizmoGroup.add(arrowZ);
+    gizmoAxesRef.current.z = arrowZ;
+
+    // Невидимый цилиндр для raycasting по оси Z
+    const cylinderZ = new THREE.CylinderGeometry(cylinderRadius, cylinderRadius, arrowLength, 8);
+    const materialZ = new THREE.MeshBasicMaterial({ visible: false });
+    const meshZ = new THREE.Mesh(cylinderZ, materialZ);
+    meshZ.rotation.x = Math.PI / 2;
+    meshZ.position.z = arrowLength / 2;
+    meshZ.name = 'axisZCylinder';
+    (meshZ.userData as any).axis = 'z';
+    gizmoGroup.add(meshZ);
+    gizmoAxisCylindersRef.current.z = meshZ;
+
+    // Позиционируем gizmo перед камерой
+    const cameraDirection = new THREE.Vector3();
+    camera.getWorldDirection(cameraDirection);
+    const gizmoPosition = camera.position.clone().add(cameraDirection.multiplyScalar(10)); // 10 единиц перед камерой
+    gizmoGroup.position.copy(gizmoPosition);
+
+    // Добавляем в сцену
+    try {
+      // Можем получить ошибку "No scene initialized!", если World уже уничтожен
+      if (world.scene && world.scene.three) {
+        world.scene.three.add(gizmoGroup);
+      }
+    } catch (e) {
+      // Если сцена уже уничтожена, просто не добавляем gizmo
+      console.warn('Невозможно добавить gizmo: сцена уже уничтожена', e);
+    }
+    gizmoGroupRef.current = gizmoGroup;
+  };
+
+  // Функция для удаления gizmo
+  const removeGizmo = (): void => {
+    try {
+      const world = worldRef.current as any;
+      const gizmoGroup = gizmoGroupRef.current;
+      if (gizmoGroup && world && world.scene && world.scene.three) {
+        world.scene.three.remove(gizmoGroup);
+      }
+    } catch (e) {
+      // Если World/scene уже уничтожены (при размонтировании), просто игнорируем
+      console.warn('Ошибка при удалении gizmo (игнорируется при размонтировании):', e);
+    }
+
+    // В любом случае очищаем ссылки, чтобы не было утечек
+    gizmoGroupRef.current = null;
+    gizmoCenterRef.current = null;
+    gizmoAxesRef.current.x = null;
+    gizmoAxesRef.current.y = null;
+    gizmoAxesRef.current.z = null;
+    gizmoAxisCylindersRef.current.x = null;
+    gizmoAxisCylindersRef.current.y = null;
+    gizmoAxisCylindersRef.current.z = null;
+    activeAxisRef.current = null;
+  };
+
+  // Функция для установки прозрачности модели
+  const setModelOpacity = (opacity: number): void => {
+    if (!modelFragmentRef.current || !modelFragmentRef.current.object) {
+      return;
+    }
+
+    const modelObject = modelFragmentRef.current.object;
+    
+    // Сохраняем оригинальную прозрачность при первом вызове (для всех типов материалов с opacity)
+    if (opacity < 1 && originalModelOpacityRef.current.size === 0) {
+      modelObject.traverse((child: THREE.Object3D) => {
+        if (child instanceof THREE.Mesh && child.material) {
+          const materials = Array.isArray(child.material) ? child.material : [child.material];
+          materials.forEach((mat: any) => {
+            if (typeof mat.opacity === 'number') {
+              // Сохраняем opacity на уровне меша, чтобы потом восстановить
+              if (!originalModelOpacityRef.current.has(child)) {
+                originalModelOpacityRef.current.set(child, mat.opacity);
+              }
+            }
+          });
+        }
+      });
+    }
+
+    // Устанавливаем новую прозрачность для всех материалов с opacity
+    modelObject.traverse((child: THREE.Object3D) => {
+      if (child instanceof THREE.Mesh && child.material) {
+        const materials = Array.isArray(child.material) ? child.material : [child.material];
+        materials.forEach((mat: any) => {
+          if (typeof mat.opacity === 'number') {
+            mat.transparent = opacity < 1 || mat.transparent;
+            mat.opacity = opacity;
+          }
+        });
+      }
+    });
+
+    // Восстанавливаем оригинальную прозрачность
+    if (opacity === 1) {
+      modelObject.traverse((child: THREE.Object3D) => {
+        if (child instanceof THREE.Mesh && child.material) {
+          const originalOpacity = originalModelOpacityRef.current.get(child);
+          if (originalOpacity !== undefined) {
+            const materials = Array.isArray(child.material) ? child.material : [child.material];
+            materials.forEach((mat: any) => {
+              if (typeof mat.opacity === 'number') {
+                mat.opacity = originalOpacity;
+                mat.transparent = originalOpacity < 1;
+              }
+            });
+          }
+        }
+      });
+      originalModelOpacityRef.current.clear();
+    }
+  };
+
+  // Функция для проецирования точки на поверхность модели
+  const projectPointToSurface = (point: THREE.Vector3): THREE.Vector3 | null => {
+    if (!modelFragmentRef.current || !modelFragmentRef.current.object) {
+      return point;
+    }
+
+    const modelObject = modelFragmentRef.current.object;
+    let closestPoint: THREE.Vector3 | null = null;
+    let minDistance = Infinity;
+
+    // Ищем ближайшую точку на поверхности
+    modelObject.traverse((child: THREE.Object3D) => {
+      if (child instanceof THREE.Mesh && child.geometry) {
+        const geometry = child.geometry;
+        const mesh = child;
+
+        const boundsTree = (geometry as any).boundsTree;
+        if (boundsTree) {
+          try {
+            // Преобразуем точку в локальные координаты меша
+            const localPoint = point.clone().applyMatrix4(
+              new THREE.Matrix4().copy(mesh.matrixWorld).invert()
+            );
+
+            const projectedPoint = new THREE.Vector3();
+            const normal = new THREE.Vector3();
+            const distance = boundsTree.closestPointToPoint(
+              localPoint,
+              projectedPoint,
+              normal,
+              5 // Максимальное расстояние для проецирования
+            );
+
+            if (distance !== null && distance < minDistance) {
+              // Преобразуем обратно в мировые координаты
+              projectedPoint.applyMatrix4(mesh.matrixWorld);
+              minDistance = distance;
+              closestPoint = projectedPoint;
+            }
+          } catch (e) {
+            // Игнорируем ошибки
+          }
+        }
+      }
+    });
+
+    return closestPoint || point;
+  };
+
+  // Функция для обновления визуальных маркеров комментариев на модели
+  const updateCommentMarkers = () => {
+    if (!commentMarkersGroupRef.current || !worldRef.current || !modelFragmentRef.current) {
+      return;
+    }
+
+    const group = commentMarkersGroupRef.current;
+    
+    // Очищаем существующие маркеры
+    while (group.children.length > 0) {
+      const child = group.children[0];
+      if (child instanceof THREE.Mesh) {
+        (child.geometry as THREE.BufferGeometry).dispose();
+        if (Array.isArray(child.material)) {
+          child.material.forEach((mat) => mat.dispose());
+        } else {
+          child.material.dispose();
+        }
+      }
+      group.remove(child);
+    }
+
+    // Создаем маркеры для каждого комментария с координатами
+    comments.forEach((comment) => {
+      if (comment.x !== null && comment.y !== null && comment.z !== null) {
+        // Создаем исходную точку из координат комментария
+        const originalPoint = new THREE.Vector3(comment.x, comment.y, comment.z);
+        
+        // Проецируем точку на поверхность модели
+        const surfacePoint = projectPointToSurface(originalPoint);
+        
+        if (surfacePoint) {
+          // Создаем сферу для маркера
+          const geometry = new THREE.SphereGeometry(0.2, 16, 16);
+          const isSelected = selectedCommentId === comment.id;
+          const material = new THREE.MeshBasicMaterial({
+            color: isSelected ? 0x00ff00 : 0xff0000, // Выделенный комментарий — зелёный, остальные — красные
+            transparent: true,
+            opacity: 0.8,
+          });
+          const marker = new THREE.Mesh(geometry, material);
+          
+          // Устанавливаем позицию маркера на поверхности
+          marker.position.copy(surfacePoint);
+          marker.name = `comment_${comment.id}`;
+          
+          // Добавляем пользовательские данные для идентификации
+          (marker.userData as any).commentId = comment.id;
+          
+          group.add(marker);
+        }
+      }
+    });
+
+    // Обновляем рендерер
+    if (fragmentsRef.current && fragmentsRef.current.core) {
+      fragmentsRef.current.core.update(true);
+    }
+  };
+
   // Загрузка комментариев
   const loadComments = async () => {
     try {
@@ -957,6 +1679,19 @@ export default function BimModelViewer({
     } catch (err) {
       // Игнорируем ошибки загрузки комментариев
     }
+  };
+
+  // Начало редактирования комментария
+  const handleStartEditComment = (comment: BimModelComment) => {
+    setSelectedCommentId(comment.id);
+    if (comment.x !== null && comment.y !== null && comment.z !== null) {
+      setSelectedPoint({ x: comment.x, y: comment.y, z: comment.z });
+    } else {
+      setSelectedPoint(null);
+    }
+    setCommentText(comment.content);
+    setEditingCommentId(comment.id);
+    setShowCommentForm(true);
   };
 
   // Создание комментария
@@ -986,11 +1721,60 @@ export default function BimModelViewer({
         setSelectedPoint(null);
         setShowCommentForm(false);
         setCommentMode(false);
+        setEditingCommentId(null);
+        setSelectedCommentId(null);
+        // Обновляем маркеры после создания комментария
+        setTimeout(() => updateCommentMarkers(), 100);
       } else {
         alert('Ошибка создания комментария');
       }
     } catch (err: any) {
       alert('Ошибка создания комментария: ' + err.message);
+    }
+  };
+
+  // Обновление (редактирование) комментария
+  const handleUpdateComment = async () => {
+    if (!editingCommentId || !commentText.trim()) return;
+
+    try {
+      // Бэкенд не поддерживает PUT (405), поэтому реализуем "редактирование" как
+      // удаление старого комментария и создание нового с теми же координатами.
+
+      // 1. Удаляем старый комментарий
+      await fetch(
+        `/api/objects/${objectId}/models/${model.id}/comments/${editingCommentId}`,
+        { method: 'DELETE' }
+      );
+
+      // 2. Создаём новый комментарий с обновлённым текстом
+      const response = await fetch(
+        `/api/objects/${objectId}/models/${model.id}/comments`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            content: commentText,
+            x: selectedPoint?.x ?? null,
+            y: selectedPoint?.y ?? null,
+            z: selectedPoint?.z ?? null,
+          }),
+        }
+      );
+
+      if (response.ok) {
+        await loadComments();
+        setCommentText('');
+        setShowCommentForm(false);
+        setEditingCommentId(null);
+        setSelectedCommentId(null);
+      } else {
+        alert('Ошибка обновления комментария');
+      }
+    } catch (err: any) {
+      alert('Ошибка обновления комментария: ' + err.message);
     }
   };
 
@@ -1010,6 +1794,8 @@ export default function BimModelViewer({
 
       if (response.ok) {
         await loadComments();
+        // Обновляем маркеры после удаления комментария
+        setTimeout(() => updateCommentMarkers(), 100);
       } else {
         alert('Ошибка удаления комментария');
       }
@@ -1025,6 +1811,311 @@ export default function BimModelViewer({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [model.id]);
+
+  // Обновление маркеров комментариев при изменении списка комментариев
+  useEffect(() => {
+    // Используем небольшую задержку, чтобы убедиться, что модель загружена
+    const timer = setTimeout(() => {
+      if (worldRef.current && commentMarkersGroupRef.current) {
+        updateCommentMarkers();
+      }
+    }, 500);
+    
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [comments, selectedCommentId]);
+
+  // Управление режимом комментариев (gizmo, прозрачность, отключение вращения)
+  useEffect(() => {
+    if (!worldRef.current || !ifcHostRef.current) {
+      return;
+    }
+
+    const world = worldRef.current;
+    const host = ifcHostRef.current;
+    const camera = world.camera;
+
+    if (commentMode) {
+      // Включаем режим комментариев
+      // 1. Отключаем ВСЕ контроллеры камеры полностью
+      if (camera && camera.controls) {
+        const controls = camera.controls as any;
+        // Сохраняем исходное состояние для восстановления
+        (controls as any)._originalState = {
+          enableRotate: controls.enableRotate,
+          enablePan: controls.enablePan,
+          enableZoom: controls.enableZoom,
+          enableDamping: controls.enableDamping,
+        };
+        // Отключаем все взаимодействия с камерой
+        if (controls.enableRotate !== undefined) {
+          controls.enableRotate = false;
+        }
+        if (controls.enablePan !== undefined) {
+          controls.enablePan = false;
+        }
+        if (controls.enableZoom !== undefined) {
+          controls.enableZoom = false;
+        }
+        if (controls.enableDamping !== undefined) {
+          controls.enableDamping = false;
+        }
+      }
+
+      // 2. Создаем gizmo
+      createGizmo();
+
+      // 3. Устанавливаем прозрачность модели
+      setModelOpacity(0.3);
+
+      // 4. Скрываем превью-маркер
+      if (previewMarkerRef.current) {
+        previewMarkerRef.current.visible = false;
+      }
+      if (previewLineRef.current) {
+        previewLineRef.current.visible = false;
+      }
+
+      // 5. Обработчики для gizmo
+      const raycaster = new THREE.Raycaster();
+      const mouse = new THREE.Vector2();
+
+      const handleMouseMove = (event: MouseEvent) => {
+        if (!gizmoGroupRef.current || !world.camera.three) {
+          return;
+        }
+
+        const rect = host.getBoundingClientRect();
+        mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+        raycaster.setFromCamera(mouse, world.camera.three);
+
+        // Проверяем наведение на оси gizmo через невидимые цилиндры
+        const gizmoObjects: THREE.Object3D[] = [];
+        if (gizmoAxisCylindersRef.current.x) gizmoObjects.push(gizmoAxisCylindersRef.current.x);
+        if (gizmoAxisCylindersRef.current.y) gizmoObjects.push(gizmoAxisCylindersRef.current.y);
+        if (gizmoAxisCylindersRef.current.z) gizmoObjects.push(gizmoAxisCylindersRef.current.z);
+
+        const intersects = raycaster.intersectObjects(gizmoObjects, false);
+
+        // Сбрасываем цвета всех осей (делаем их ярче для лучшей видимости)
+        if (gizmoAxesRef.current.x) {
+          (gizmoAxesRef.current.x as any).setColor(0xff3333);
+        }
+        if (gizmoAxesRef.current.y) {
+          (gizmoAxesRef.current.y as any).setColor(0x33ff33);
+        }
+        if (gizmoAxesRef.current.z) {
+          (gizmoAxesRef.current.z as any).setColor(0x3333ff);
+        }
+
+        // Подсвечиваем активную ось ярким желтым
+        if (intersects.length > 0 && !isDraggingRef.current) {
+          const intersected = intersects[0].object;
+          const axis = (intersected.userData as any).axis as 'x' | 'y' | 'z' | undefined;
+          if (axis && (axis === 'x' || axis === 'y' || axis === 'z') && gizmoAxesRef.current[axis]) {
+            // Подсвечиваем активную ось ярким желтым и делаем толще визуально
+            (gizmoAxesRef.current[axis] as any).setColor(0xffff00);
+            // Увеличиваем масштаб для лучшей видимости
+            gizmoAxesRef.current[axis]!.scale.set(1.3, 1.3, 1.3);
+          }
+        } else {
+          // Сбрасываем масштаб всех осей
+          if (gizmoAxesRef.current.x) gizmoAxesRef.current.x.scale.set(1, 1, 1);
+          if (gizmoAxesRef.current.y) gizmoAxesRef.current.y.scale.set(1, 1, 1);
+          if (gizmoAxesRef.current.z) gizmoAxesRef.current.z.scale.set(1, 1, 1);
+        }
+      };
+
+      const handleMouseDown = (event: MouseEvent) => {
+        // Блокируем все события мыши, если не взаимодействуем с gizmo
+        // Используем ПРАВУЮ кнопку мыши для перемещения gizmo (event.button === 2)
+        if (event.button !== 2 || !gizmoGroupRef.current || !world.camera.three) {
+          // Блокируем событие, чтобы оно не дошло до контроллеров камеры
+          event.preventDefault();
+          event.stopPropagation();
+          event.stopImmediatePropagation();
+          return;
+        }
+
+        const rect = host.getBoundingClientRect();
+        mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+        raycaster.setFromCamera(mouse, world.camera.three);
+
+        // Используем невидимые цилиндры для raycasting
+        const gizmoObjects: THREE.Object3D[] = [];
+        if (gizmoAxisCylindersRef.current.x) gizmoObjects.push(gizmoAxisCylindersRef.current.x);
+        if (gizmoAxisCylindersRef.current.y) gizmoObjects.push(gizmoAxisCylindersRef.current.y);
+        if (gizmoAxisCylindersRef.current.z) gizmoObjects.push(gizmoAxisCylindersRef.current.z);
+
+        const intersects = raycaster.intersectObjects(gizmoObjects, false);
+
+        if (intersects.length > 0) {
+          event.preventDefault();
+          event.stopPropagation();
+          event.stopImmediatePropagation(); // Более агрессивная блокировка
+          const intersected = intersects[0].object;
+          const axis = (intersected.userData as any).axis as 'x' | 'y' | 'z' | undefined;
+          if (axis && (axis === 'x' || axis === 'y' || axis === 'z')) {
+            activeAxisRef.current = axis;
+            isDraggingRef.current = true;
+            dragStartMouseRef.current = { x: event.clientX, y: event.clientY };
+            if (gizmoGroupRef.current) {
+              dragStartGizmoPosRef.current = gizmoGroupRef.current.position.clone();
+            }
+            // Контроллеры уже отключены при входе в режим комментариев
+            // Подсвечиваем активную ось ярким желтым и увеличиваем масштаб
+            const axisArrow = gizmoAxesRef.current[axis];
+            if (axisArrow) {
+              (axisArrow as any).setColor(0xffff00);
+              axisArrow.scale.set(1.5, 1.5, 1.5);
+            }
+          }
+        } else {
+          // Если клик не по gizmo, блокируем событие
+          event.preventDefault();
+          event.stopPropagation();
+          event.stopImmediatePropagation();
+        }
+      };
+
+      const handleMouseUp = () => {
+        if (isDraggingRef.current) {
+          // Контроллеры остаются отключенными в режиме комментариев
+          // Сбрасываем масштаб активной оси
+          if (activeAxisRef.current && gizmoAxesRef.current[activeAxisRef.current]) {
+            gizmoAxesRef.current[activeAxisRef.current]!.scale.set(1, 1, 1);
+          }
+          activeAxisRef.current = null;
+          isDraggingRef.current = false;
+          dragStartMouseRef.current = null;
+          dragStartGizmoPosRef.current = null;
+        }
+      };
+
+      const handleMouseDrag = (event: MouseEvent) => {
+        if (!isDraggingRef.current || !activeAxisRef.current || !gizmoGroupRef.current || !dragStartMouseRef.current || !dragStartGizmoPosRef.current || !world.camera.three) {
+          return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation(); // Более агрессивная блокировка
+
+        // Получаем камеру
+        const camera = world.camera.three;
+        
+        // Контроллеры уже отключены при входе в режим комментариев
+
+        // Вычисляем смещение мыши
+        const deltaX = event.clientX - dragStartMouseRef.current.x;
+        const deltaY = event.clientY - dragStartMouseRef.current.y;
+
+        // Преобразуем смещение мыши в движение по оси
+        // Используем проекцию на плоскость камеры
+        const cameraDirection = new THREE.Vector3();
+        camera.getWorldDirection(cameraDirection);
+
+        // Вычисляем направление движения по активной оси
+        const axisDirection = new THREE.Vector3();
+        if (activeAxisRef.current === 'x') {
+          axisDirection.set(1, 0, 0);
+        } else if (activeAxisRef.current === 'y') {
+          axisDirection.set(0, 1, 0);
+        } else if (activeAxisRef.current === 'z') {
+          axisDirection.set(0, 0, 1);
+        }
+
+        // Преобразуем направление оси в пространство камеры
+        const cameraRight = new THREE.Vector3();
+        const cameraUp = new THREE.Vector3();
+        cameraRight.setFromMatrixColumn(camera.matrixWorld, 0).normalize();
+        cameraUp.setFromMatrixColumn(camera.matrixWorld, 1).normalize();
+
+        // Проецируем направление оси на плоскость камеры
+        const axisOnScreen = new THREE.Vector2();
+        axisOnScreen.x = axisDirection.dot(cameraRight);
+        axisOnScreen.y = axisDirection.dot(cameraUp);
+        axisOnScreen.normalize();
+
+        // Вычисляем движение
+        const movement = (deltaX * axisOnScreen.x + deltaY * axisOnScreen.y) * 0.1; // Коэффициент скорости
+
+        // Обновляем позицию gizmo
+        const newPosition = dragStartGizmoPosRef.current.clone();
+        if (activeAxisRef.current === 'x') {
+          newPosition.x += movement;
+        } else if (activeAxisRef.current === 'y') {
+          newPosition.y += movement;
+        } else if (activeAxisRef.current === 'z') {
+          newPosition.z += movement;
+        }
+
+        gizmoGroupRef.current.position.copy(newPosition);
+      };
+
+      host.addEventListener('mousemove', handleMouseMove);
+      // Используем capture phase для перехвата событий до контроллеров камеры
+      host.addEventListener('mousedown', handleMouseDown, true);
+      host.addEventListener('mouseup', handleMouseUp, true);
+      host.addEventListener('mousemove', handleMouseDrag, true);
+
+      // Сохраняем обработчики для очистки
+      (host as any)._gizmoMouseMove = handleMouseMove;
+      (host as any)._gizmoMouseDown = handleMouseDown;
+      (host as any)._gizmoMouseUp = handleMouseUp;
+      (host as any)._gizmoMouseDrag = handleMouseDrag;
+
+      return () => {
+        // Отключаем режим комментариев
+        removeGizmo();
+        setModelOpacity(1);
+
+        // Восстанавливаем ВСЕ контроллеры камеры из сохраненного состояния
+        if (camera && camera.controls) {
+          const controls = camera.controls as any;
+          const originalState = (controls as any)._originalState;
+          if (originalState) {
+            if (controls.enableRotate !== undefined) {
+              controls.enableRotate = originalState.enableRotate;
+            }
+            if (controls.enablePan !== undefined) {
+              controls.enablePan = originalState.enablePan;
+            }
+            if (controls.enableZoom !== undefined) {
+              controls.enableZoom = originalState.enableZoom;
+            }
+            if (controls.enableDamping !== undefined) {
+              controls.enableDamping = originalState.enableDamping;
+            }
+            delete (controls as any)._originalState;
+          }
+        }
+
+        // Удаляем обработчики
+        if ((host as any)._gizmoMouseMove) {
+          host.removeEventListener('mousemove', (host as any)._gizmoMouseMove);
+          delete (host as any)._gizmoMouseMove;
+        }
+        if ((host as any)._gizmoMouseDown) {
+          host.removeEventListener('mousedown', (host as any)._gizmoMouseDown, true);
+          delete (host as any)._gizmoMouseDown;
+        }
+        if ((host as any)._gizmoMouseUp) {
+          host.removeEventListener('mouseup', (host as any)._gizmoMouseUp, true);
+          delete (host as any)._gizmoMouseUp;
+        }
+        if ((host as any)._gizmoMouseDrag) {
+          host.removeEventListener('mousemove', (host as any)._gizmoMouseDrag, true);
+          delete (host as any)._gizmoMouseDrag;
+        }
+      };
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [commentMode]);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -1261,6 +2352,13 @@ export default function BimModelViewer({
                             setCommentMode(newMode);
                             setShowCommentForm(false);
                             setSelectedPoint(null);
+                            // Скрываем превью-маркер при выходе из режима комментариев
+                            if (!newMode && previewMarkerRef.current) {
+                              previewMarkerRef.current.visible = false;
+                            }
+                            if (!newMode && previewLineRef.current) {
+                              previewLineRef.current.visible = false;
+                            }
                             console.log('Режим комментариев:', newMode ? 'включен' : 'выключен');
                           }}
                           className={`px-3 py-1 text-sm rounded ${
@@ -1278,13 +2376,13 @@ export default function BimModelViewer({
                             ⚠️ Режим комментариев активен
                           </p>
                           <p className="text-xs text-yellow-700 mt-1">
-                            Нажмите правой кнопкой мыши по модели, чтобы выбрать точку для комментария
+                            Переместите gizmo по осям (наведите на стрелку и перетащите), затем нажмите правой кнопкой мыши для сохранения позиции
                           </p>
                         </div>
                       )}
                     </div>
 
-                    {/* Форма создания комментария */}
+                    {/* Форма создания / редактирования комментария */}
                     {showCommentForm && selectedPoint && (
                       <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
                         <div className="mb-2">
@@ -1301,17 +2399,18 @@ export default function BimModelViewer({
                         </div>
                         <div className="flex gap-2">
                           <button
-                            onClick={handleCreateComment}
+                            onClick={editingCommentId ? handleUpdateComment : handleCreateComment}
                             disabled={!commentText.trim()}
                             className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:bg-gray-300"
                           >
-                            Сохранить
+                            {editingCommentId ? 'Обновить' : 'Сохранить'}
                           </button>
                           <button
                             onClick={() => {
                               setShowCommentForm(false);
                               setSelectedPoint(null);
                               setCommentText('');
+                              setEditingCommentId(null);
                             }}
                             className="px-3 py-1 bg-gray-300 text-gray-700 rounded text-sm hover:bg-gray-400"
                           >
@@ -1328,10 +2427,17 @@ export default function BimModelViewer({
                           Комментариев пока нет
                         </p>
                       ) : (
-                        comments.map((comment) => (
+                        comments.map((comment) => {
+                          const isSelected = selectedCommentId === comment.id;
+                          return (
                           <div
                             key={comment.id}
-                            className="p-3 bg-gray-50 rounded-lg border border-gray-200"
+                            className={`p-3 rounded-lg border cursor-pointer ${
+                              isSelected
+                                ? 'bg-blue-50 border-blue-400'
+                                : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                            }`}
+                            onClick={() => handleStartEditComment(comment)}
                           >
                             <div className="flex justify-between items-start mb-2">
                               <div className="flex-1">
@@ -1349,7 +2455,10 @@ export default function BimModelViewer({
                               </div>
                               {!isCustomer && (
                                 <button
-                                  onClick={() => handleDeleteComment(comment.id)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteComment(comment.id);
+                                  }}
                                   className="text-red-500 hover:text-red-700 text-sm"
                                 >
                                   ×
@@ -1358,7 +2467,7 @@ export default function BimModelViewer({
                             </div>
                             <p className="text-sm text-gray-700">{comment.content}</p>
                           </div>
-                        ))
+                        )})
                       )}
                     </div>
                   </div>
